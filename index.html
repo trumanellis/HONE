@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HONE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/styles/editor.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="toolbar"></div>
+      <div id="editor-container">
+        <div id="welcome">
+          <h1>HONE</h1>
+          <p>open an html file to start editing</p>
+          <div class="shortcuts">
+            <p><kbd>⌘O</kbd> open &nbsp; <kbd>⌘S</kbd> save &nbsp; <kbd>⌘⇧S</kbd> save as</p>
+            <p><kbd>⌘B</kbd> bold &nbsp; <kbd>⌘I</kbd> italic &nbsp; <kbd>⌘U</kbd> underline</p>
+            <p><kbd>⌘Z</kbd> undo &nbsp; <kbd>⌘⇧Z</kbd> redo</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="toast"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
