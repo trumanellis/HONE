@@ -5,11 +5,11 @@
 <h1 align="center">HONE</h1>
 
 <p align="center">
-  <strong>The human pass on AI-generated HTML.</strong>
+  <strong>The human pass on AI-generated content.</strong>
 </p>
 
 <p align="center">
-  Open. See it rendered. Make it right.
+  Open HTML or Markdown. See it rendered. Make it right.
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
 
 ## The Problem
 
-AI can generate HTML in seconds. But it's never *quite* right.
+AI can generate HTML and Markdown in seconds. But it's never *quite* right.
 
 The spacing is off. The copy needs a tweak. That button should be over *there*. You know it when you see it — but you need to *see* it first.
 
@@ -34,7 +34,7 @@ So you open the file in a browser. Then open it in an editor. Then refresh. Then
 
 ## The Solution
 
-HONE opens your HTML file as a fully rendered page. Click any element. Edit it directly. Save. Done.
+HONE opens your HTML or Markdown file as a fully rendered page. Click any element. Edit it directly. Save. Done.
 
 No split panes. No context switching. No refresh cycle.
 
@@ -44,12 +44,14 @@ You see what your users will see, and you fix what needs fixing.
 
 ## Features
 
-- **Open File** — Native file dialog to open any HTML file
+- **Open HTML & Markdown** — Native file dialog to open `.html`, `.htm`, `.md`, or `.markdown` files
 - **Inline Editing** — Click any text element to edit directly in the rendered view
-- **Text Formatting** — Bold, italic, underline with familiar shortcuts
+- **Text Formatting** — Bold, italic, underline with familiar shortcuts (Markdown-aware)
 - **Save/Save As** — Save changes back to the original file or export a copy
+- **Round-trip Markdown** — Edit rendered Markdown visually, save back as Markdown
+- **Frontmatter Preservation** — YAML frontmatter is preserved when editing Markdown
+- **Image Support** — Images load correctly from relative paths in both HTML and Markdown
 - **Unsaved Changes Warning** — Prevents accidental data loss
-- **Relative Path Support** — Images and CSS load correctly from the file's directory
 
 ---
 
@@ -73,14 +75,17 @@ npm run tauri build
 ## Usage
 
 ```bash
-# Open a file
+# Open an HTML file
 hone index.html
+
+# Open a Markdown file
+hone README.md
 
 # Open the current directory's index
 hone .
 ```
 
-Or drag an HTML file onto the app icon.
+Or drag an HTML or Markdown file onto the app icon.
 
 ### Keyboard Shortcuts
 
@@ -147,7 +152,7 @@ hone/
 
 ### Security Note
 
-CSP is disabled (`"csp": null`) to allow loading arbitrary HTML content with inline styles and scripts. The iframe sandbox restricts script execution in loaded documents.
+CSP is configured to allow loading local assets via Tauri's asset protocol. The iframe sandbox restricts script execution in loaded documents.
 
 ---
 
@@ -163,7 +168,7 @@ HONE is built for the **refinement step**. The part where you take something 90%
 
 We call this the **HONE** workflow:
 
-1. Generate HTML with your AI tool of choice
+1. Generate HTML or Markdown with your AI tool of choice
 2. Open it in HONE
 3. See it as your users will
 4. Make the small adjustments that make it yours
@@ -177,10 +182,13 @@ No friction. No context switching. Just the final pass that brings it to edge.
 
 ### v0.1 — Now
 - [x] Open and render local HTML files
+- [x] Open and render Markdown files with live preview
+- [x] Round-trip Markdown editing (edit visually, save as Markdown)
+- [x] Frontmatter preservation for Markdown
 - [x] Inline text editing with contenteditable
 - [x] Text formatting (bold, italic, underline)
 - [x] Save back to source file
-- [x] Relative asset path support
+- [x] Relative asset path support (images in HTML and Markdown)
 
 ### v0.2 — Next
 - [ ] Class and attribute editing panel

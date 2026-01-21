@@ -67,6 +67,30 @@ html, body {
   box-shadow: var(--shadow-glow);
 }
 
+#toolbar .file-type-badge {
+  display: none;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+#toolbar .file-type-badge.html {
+  display: inline-block;
+  background: var(--color-steel);
+  color: var(--color-polish);
+  border: 1px solid var(--color-edge);
+}
+
+#toolbar .file-type-badge.markdown {
+  display: inline-block;
+  background: rgba(88, 166, 255, 0.15);
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
 #toolbar .filename {
   margin-left: auto;
   font-size: var(--text-label);

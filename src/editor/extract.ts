@@ -49,3 +49,26 @@ export function extractDoctype(html: string): string {
   const match = html.match(/^<!DOCTYPE[^>]*>/i);
   return match ? match[0] : "<!DOCTYPE html>";
 }
+
+/**
+ * Convert Tauri asset URLs back to relative paths for saving
+ */
+export function revertAssetUrls(html: string, dirPath: string): string {
+  // Match asset URLs and convert back to relative paths
+  // Asset URLs look like: https://asset.localhost/path/to/file
+  return html.replace(
+    /https:\/\/asset\.localhost\/([^"'\s>]+)/g,
+    (_match, encodedPath) => {
+      // Decode the path (asset URLs are URL-encoded)
+      const absolutePath = decodeURIComponent(encodedPath);
+
+      // Convert to relative path if within dirPath
+      if (absolutePath.startsWith(dirPath + '/')) {
+        return absolutePath.substring(dirPath.length + 1);
+      }
+
+      // Return absolute path if outside dirPath
+      return absolutePath;
+    }
+  );
+}

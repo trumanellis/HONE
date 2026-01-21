@@ -1,3 +1,5 @@
+import type { FileType } from "../types/editor";
+
 export interface ToolbarCallbacks {
   onOpen: () => void;
   onSave: () => void;
@@ -7,6 +9,7 @@ export interface ToolbarCallbacks {
 export function createToolbar(container: HTMLElement, callbacks: ToolbarCallbacks): {
   setFilename: (name: string | null) => void;
   setUnsaved: (unsaved: boolean) => void;
+  setFileType: (type: FileType) => void;
 } {
   const openBtn = document.createElement("button");
   openBtn.textContent = "open";
@@ -23,12 +26,16 @@ export function createToolbar(container: HTMLElement, callbacks: ToolbarCallback
   saveAsBtn.title = "save as (⌘⇧S)";
   saveAsBtn.addEventListener("click", callbacks.onSaveAs);
 
+  const fileTypeBadge = document.createElement("span");
+  fileTypeBadge.className = "file-type-badge";
+
   const filenameEl = document.createElement("span");
   filenameEl.className = "filename";
 
   container.appendChild(openBtn);
   container.appendChild(saveBtn);
   container.appendChild(saveAsBtn);
+  container.appendChild(fileTypeBadge);
   container.appendChild(filenameEl);
 
   return {
@@ -37,6 +44,10 @@ export function createToolbar(container: HTMLElement, callbacks: ToolbarCallback
     },
     setUnsaved(unsaved: boolean) {
       filenameEl.classList.toggle("unsaved", unsaved);
+    },
+    setFileType(type: FileType) {
+      fileTypeBadge.textContent = type === 'markdown' ? 'MD' : 'HTML';
+      fileTypeBadge.className = `file-type-badge ${type}`;
     },
   };
 }
