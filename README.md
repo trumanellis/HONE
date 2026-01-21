@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/hone-logo.png" alt="HONE" width="120" />
+  <img src="icon-source.png" alt="HONE" width="120" />
 </p>
 
 <h1 align="center">HONE</h1>
@@ -57,13 +57,13 @@ You see what your users will see, and you fix what needs fixing.
 
 ### From Releases
 
-Download the latest build for your platform from [Releases](https://github.com/yourusername/hone/releases).
+Download the latest build for your platform from [Releases](https://github.com/trumanellis/HONE/releases).
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/yourusername/hone.git
-cd hone
+git clone https://github.com/trumanellis/HONE.git
+cd HONE
 npm install
 npm run tauri build
 ```
