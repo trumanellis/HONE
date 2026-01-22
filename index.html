@@ -12,14 +12,27 @@
   <body>
     <div id="app">
       <div id="toolbar"></div>
-      <div id="editor-container">
-        <div id="welcome">
-          <h1>HONE</h1>
-          <p>open an html file to start editing</p>
-          <div class="shortcuts">
-            <p><kbd>⌘O</kbd> open &nbsp; <kbd>⌘S</kbd> save &nbsp; <kbd>⌘⇧S</kbd> save as</p>
-            <p><kbd>⌘B</kbd> bold &nbsp; <kbd>⌘I</kbd> italic &nbsp; <kbd>⌘U</kbd> underline</p>
-            <p><kbd>⌘Z</kbd> undo &nbsp; <kbd>⌘⇧Z</kbd> redo</p>
+      <div id="main-content">
+        <div id="tab-bar-container">
+          <div class="sidebar-header">
+            <img src="/icon-source.png" alt="HONE" class="sidebar-logo" />
+            <span class="sidebar-title">HONE</span>
+          </div>
+          <div class="tab-bar"></div>
+        </div>
+        <div id="editor-container">
+          <div id="welcome">
+            <img src="/icon-source.png" alt="HONE" class="logo" />
+            <p class="tagline">the human pass on AI-generated content</p>
+            <p class="hint">open html or markdown to start editing</p>
+            <div class="shortcuts">
+              <p><kbd>⌘O</kbd> open &nbsp; <kbd>⌘S</kbd> save &nbsp; <kbd>⌘⇧S</kbd> save as</p>
+              <p><kbd>⌘W</kbd> close tab &nbsp; <kbd>drag</kbd> files to open</p>
+              <p><kbd>⌘B</kbd> bold &nbsp; <kbd>⌘I</kbd> italic &nbsp; <kbd>⌘U</kbd> underline</p>
+              <p><kbd>⌘Z</kbd> undo &nbsp; <kbd>⌘⇧Z</kbd> redo</p>
+              <p><kbd>⌘F</kbd> find &nbsp; <kbd>⌘H</kbd> find & replace &nbsp; <kbd>ESC</kbd> close</p>
+              <p><kbd>right-click</kbd> delete, edit links, convert blocks</p>
+            </div>
           </div>
         </div>
       </div>

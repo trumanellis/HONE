@@ -4,6 +4,8 @@ export interface ToolbarCallbacks {
   onOpen: () => void;
   onSave: () => void;
   onSaveAs: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 export function createToolbar(container: HTMLElement, callbacks: ToolbarCallbacks): {
@@ -12,22 +14,35 @@ export function createToolbar(container: HTMLElement, callbacks: ToolbarCallback
   setFileType: (type: FileType) => void;
 } {
   const openBtn = document.createElement("button");
-  openBtn.textContent = "open";
+  openBtn.innerHTML = '<span class="btn-icon">📂</span> open';
   openBtn.title = "open file (⌘O)";
   openBtn.addEventListener("click", callbacks.onOpen);
 
   const saveBtn = document.createElement("button");
-  saveBtn.textContent = "save";
+  saveBtn.innerHTML = '<span class="btn-icon">💾</span> save';
   saveBtn.title = "save file (⌘S)";
   saveBtn.addEventListener("click", callbacks.onSave);
 
   const saveAsBtn = document.createElement("button");
-  saveAsBtn.textContent = "save as";
+  saveAsBtn.innerHTML = '<span class="btn-icon">📄</span> save as';
   saveAsBtn.title = "save as (⌘⇧S)";
   saveAsBtn.addEventListener("click", callbacks.onSaveAs);
 
-  const fileTypeBadge = document.createElement("span");
-  fileTypeBadge.className = "file-type-badge";
+  // Separator
+  const separator = document.createElement("span");
+  separator.className = "toolbar-separator";
+
+  const undoBtn = document.createElement("button");
+  undoBtn.innerHTML = '<span class="btn-icon">↩</span> undo';
+  undoBtn.title = "undo (⌘Z)";
+  undoBtn.addEventListener("mousedown", (e) => e.preventDefault()); // Prevent focus steal
+  undoBtn.addEventListener("click", callbacks.onUndo);
+
+  const redoBtn = document.createElement("button");
+  redoBtn.innerHTML = '<span class="btn-icon">↪</span> redo';
+  redoBtn.title = "redo (⌘⇧Z)";
+  redoBtn.addEventListener("mousedown", (e) => e.preventDefault()); // Prevent focus steal
+  redoBtn.addEventListener("click", callbacks.onRedo);
 
   const filenameEl = document.createElement("span");
   filenameEl.className = "filename";
@@ -35,7 +50,9 @@ export function createToolbar(container: HTMLElement, callbacks: ToolbarCallback
   container.appendChild(openBtn);
   container.appendChild(saveBtn);
   container.appendChild(saveAsBtn);
-  container.appendChild(fileTypeBadge);
+  container.appendChild(separator);
+  container.appendChild(undoBtn);
+  container.appendChild(redoBtn);
   container.appendChild(filenameEl);
 
   return {
@@ -45,9 +62,8 @@ export function createToolbar(container: HTMLElement, callbacks: ToolbarCallback
     setUnsaved(unsaved: boolean) {
       filenameEl.classList.toggle("unsaved", unsaved);
     },
-    setFileType(type: FileType) {
-      fileTypeBadge.textContent = type === 'markdown' ? 'MD' : 'HTML';
-      fileTypeBadge.className = `file-type-badge ${type}`;
+    setFileType(_type: FileType) {
+      // File type is shown in sidebar tabs, no longer needed in toolbar
     },
   };
 }

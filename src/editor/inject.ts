@@ -52,6 +52,18 @@ export function injectStyles(doc: Document): void {
     [style*="position:sticky"] {
       display: none !important;
     }
+    /* Find & Replace match highlighting */
+    mark.hone-find-highlight {
+      background: rgba(92, 143, 255, 0.3);
+      color: inherit;
+      border-radius: 2px;
+      padding: 1px 0;
+    }
+    mark.hone-find-highlight.current {
+      background: rgba(92, 143, 255, 0.7);
+      outline: 1px solid #5C8FFF;
+      outline-offset: 1px;
+    }
   `;
   doc.head.appendChild(style);
 
