@@ -11,7 +11,13 @@ export const EDITABLE_TAGS = [
   'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'li', 'td', 'th', 'blockquote', 'figcaption',
   'dt', 'dd', 'label', 'legend', 'summary',
+  'span', 'strong', 'em', 'b', 'i', 'u', 'small', 'mark',
 ];
+
+/**
+ * Tags that are editable only if they contain direct text (leaf nodes)
+ */
+export const LEAF_EDITABLE_TAGS = ['div'];
 
 /**
  * Represents an editable region in the HTML document
@@ -27,10 +33,34 @@ export interface EditableRegion {
 }
 
 /**
+ * Block-level tags that indicate a div is a container, not a leaf
+ */
+const BLOCK_TAGS = [
+  'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'ul', 'ol', 'li', 'table', 'tr', 'section', 'article',
+  'header', 'footer', 'nav', 'aside', 'main', 'form',
+  'blockquote', 'pre', 'figure', 'figcaption',
+];
+
+/**
  * Type guard to check if a node is an Element with sourceCodeLocation
  */
 function isElement(node: Node): node is Element {
   return 'tagName' in node;
+}
+
+/**
+ * Check if an element is a "leaf" node (contains only text/inline elements, no block children)
+ */
+function isLeafElement(node: Element): boolean {
+  if (!('childNodes' in node)) return true;
+
+  for (const child of node.childNodes) {
+    if (isElement(child) && BLOCK_TAGS.includes(child.tagName)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -42,21 +72,26 @@ export function parseEditableRegions(html: string): EditableRegion[] {
   let regionId = 0;
 
   function walk(node: Node): void {
-    if (isElement(node) && EDITABLE_TAGS.includes(node.tagName)) {
-      const loc = node.sourceCodeLocation;
-      if (loc?.startTag && loc?.endTag) {
-        const startOffset = loc.startTag.endOffset;
-        const endOffset = loc.endTag.startOffset;
+    if (isElement(node)) {
+      const isDirectlyEditable = EDITABLE_TAGS.includes(node.tagName);
+      const isLeafEditable = LEAF_EDITABLE_TAGS.includes(node.tagName) && isLeafElement(node);
 
-        regions.push({
-          id: `region-${regionId++}`,
-          tagName: node.tagName,
-          startOffset,
-          endOffset,
-          originalContent: html.slice(startOffset, endOffset),
-          currentContent: null,
-          isDirty: false,
-        });
+      if (isDirectlyEditable || isLeafEditable) {
+        const loc = node.sourceCodeLocation;
+        if (loc?.startTag && loc?.endTag) {
+          const startOffset = loc.startTag.endOffset;
+          const endOffset = loc.endTag.startOffset;
+
+          regions.push({
+            id: `region-${regionId++}`,
+            tagName: node.tagName,
+            startOffset,
+            endOffset,
+            originalContent: html.slice(startOffset, endOffset),
+            currentContent: null,
+            isDirty: false,
+          });
+        }
       }
     }
 
