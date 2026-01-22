@@ -313,7 +313,7 @@ Code contributions welcome once we stabilize the core editing loop. See [CONTRIB
 
 ## License
 
-MIT © [Your Name]
+MIT © Truman Ellis
 
 ---
 
