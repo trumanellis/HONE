@@ -13,6 +13,18 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/trumanellis/HONE/releases/latest">
+    <img src="https://img.shields.io/github/v/release/trumanellis/HONE?style=for-the-badge&label=Download&color=5C8FFF" alt="Download" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/trumanellis/HONE/releases/latest">macOS</a> •
+  <a href="https://github.com/trumanellis/HONE/releases/latest">Windows</a> •
+  <a href="https://github.com/trumanellis/HONE/releases/latest">Linux</a>
+</p>
+
+<p align="center">
   <a href="#installation">Installation</a> •
   <a href="#usage">Usage</a> •
   <a href="#development">Development</a> •
