@@ -1,47 +1,31 @@
-// Elements that should be made contenteditable
-const EDITABLE_SELECTORS = [
-  "p",
-  "h1", "h2", "h3", "h4", "h5", "h6",
-  "li",
-  "td", "th",
-  "blockquote",
-  "figcaption",
-  "dt", "dd",
-  "label",
-  "legend",
-  "summary",
-  "span", // Only direct text containers
-  "a",
-].join(", ");
+import type { EditableRegion } from './html-parser';
 
 const EDITOR_CLASS = "html-editor-editable";
 const EDITOR_ATTR = "data-html-editor";
 
 /**
- * Inject contenteditable attributes into block-level text elements
+ * Inject edit IDs and contenteditable attributes into browser DOM elements.
+ * Walks the DOM in document order, matching elements by tag name sequence
+ * to align with the AST-derived regions.
  */
-export function injectEditable(doc: Document): void {
-  const elements = doc.querySelectorAll(EDITABLE_SELECTORS);
+export function injectEditableRegions(doc: Document, regions: EditableRegion[]): void {
+  // Track how many of each tag we've seen to match DOM order to AST order
+  const tagCounts: Record<string, number> = {};
 
-  elements.forEach((el) => {
-    // Skip if element has no direct text content or only whitespace
-    const hasDirectText = Array.from(el.childNodes).some(
-      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
-    );
+  for (const region of regions) {
+    const count = tagCounts[region.tagName] || 0;
+    const elements = doc.querySelectorAll(region.tagName);
 
-    // Also include elements that have only inline children (like <strong>, <em>)
-    const hasInlineContent = el.children.length > 0 &&
-      Array.from(el.children).every((child) => {
-        const display = window.getComputedStyle(child).display;
-        return display === "inline" || display === "inline-block";
-      });
-
-    if (hasDirectText || hasInlineContent || el.children.length === 0) {
-      el.setAttribute("contenteditable", "true");
+    if (count < elements.length) {
+      const el = elements[count];
+      el.setAttribute('data-hone-edit-id', region.id);
+      el.setAttribute('contenteditable', 'true');
       el.classList.add(EDITOR_CLASS);
-      el.setAttribute(EDITOR_ATTR, "true");
+      el.setAttribute(EDITOR_ATTR, 'true');
     }
-  });
+
+    tagCounts[region.tagName] = count + 1;
+  }
 }
 
 /**

@@ -6,8 +6,14 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { createToolbar } from "./editor/toolbar";
-import { injectEditable, injectStyles, EDITOR_ATTR } from "./editor/inject";
-import { extractCleanHtml, extractDoctype, revertAssetUrls } from "./editor/extract";
+import { injectEditableRegions, injectStyles, EDITOR_ATTR } from "./editor/inject";
+import {
+  parseEditableRegions,
+  extractDoctype,
+  surgicalReplace,
+  syncRegionsFromDom,
+  type EditableRegion,
+} from "./editor/html-parser";
 import {
   parseMarkdown,
   serializeToMarkdown,
@@ -26,6 +32,10 @@ interface EditorState {
   fileType: FileType;
   originalMarkdown: string | null;
   frontmatter: FrontmatterData | null;
+  // Surgical editing state for HTML files
+  originalHtml: string | null;      // Verbatim file content (never modified)
+  regions: EditableRegion[];        // Editable regions with byte offsets
+  scriptMap: Map<string, string>;   // Stores complete script tags for restoration
 }
 
 const state: EditorState = {
@@ -36,6 +46,9 @@ const state: EditorState = {
   fileType: 'html',
   originalMarkdown: null,
   frontmatter: null,
+  originalHtml: null,
+  regions: [],
+  scriptMap: new Map(),
 };
 
 function detectFileType(path: string): FileType {
@@ -43,35 +56,28 @@ function detectFileType(path: string): FileType {
   return (ext === 'md' || ext === 'markdown') ? 'markdown' : 'html';
 }
 
-// Convert image src attributes in HTML to use Tauri asset protocol
-function convertHtmlImageSrcs(html: string, dirPath: string): string {
-  // Match img tags and rewrite src attributes for relative paths
-  return html.replace(
-    /<img\s+([^>]*?)src\s*=\s*(["'])([^"']+)\2([^>]*)>/gi,
-    (match, before, quote, src, after) => {
-      // Skip data URLs, http(s) URLs, and already-converted asset URLs
-      if (src.startsWith('data:') || src.startsWith('http://') ||
-          src.startsWith('https://') || src.startsWith('asset:')) {
-        return match;
-      }
+// Transform images in the live DOM to use Tauri asset protocol for display
+function transformImagesForDisplay(doc: Document, dirPath: string): void {
+  const images = doc.querySelectorAll('img');
 
-      // Convert relative path to absolute, then to asset URL
-      let absolutePath: string;
-      if (src.startsWith('/')) {
-        // Absolute path on filesystem
-        absolutePath = src;
-      } else if (src.startsWith('file://')) {
-        // file:// URL - extract path
-        absolutePath = src.replace('file://', '');
-      } else {
-        // Relative path - resolve against dirPath
-        absolutePath = `${dirPath}/${src}`;
-      }
-
-      const assetUrl = convertFileSrc(absolutePath);
-      return `<img ${before}src=${quote}${assetUrl}${quote}${after}>`;
+  images.forEach((img) => {
+    const src = img.getAttribute('src');
+    if (!src || src.startsWith('data:') || src.startsWith('http://') ||
+        src.startsWith('https://') || src.startsWith('asset:')) {
+      return;
     }
-  );
+
+    // Convert to asset URL for display
+    let absolutePath: string;
+    if (src.startsWith('/')) {
+      absolutePath = src;
+    } else if (src.startsWith('file://')) {
+      absolutePath = src.replace('file://', '');
+    } else {
+      absolutePath = `${dirPath}/${src}`;
+    }
+    img.setAttribute('src', convertFileSrc(absolutePath));
+  });
 }
 
 // Toast notification
@@ -258,9 +264,12 @@ async function loadFile(path: string): Promise<void> {
     state.fileType = fileType;
     state.isDirty = false;
 
-    // Reset markdown-specific state
+    // Reset state for new file
     state.originalMarkdown = null;
     state.frontmatter = null;
+    state.originalHtml = null;
+    state.regions = [];
+    state.scriptMap.clear();
 
     let htmlContent: string;
 
@@ -279,7 +288,6 @@ async function loadFile(path: string): Promise<void> {
       });
 
       // Wrap in HTML document with markdown styles
-      // Include base tag for relative paths (must be in HTML before parsing for images to work)
       htmlContent = `<!DOCTYPE html>
 <html>
 <head>
@@ -293,9 +301,11 @@ ${bodyHtml}
 </html>`;
       state.originalDoctype = "<!DOCTYPE html>";
     } else {
-      // HTML file - convert image paths to asset URLs
-      htmlContent = convertHtmlImageSrcs(content, dirPath);
+      // HTML file - store original and parse editable regions
+      state.originalHtml = content;
       state.originalDoctype = extractDoctype(content);
+      state.regions = parseEditableRegions(content);
+      htmlContent = content;
     }
 
     // Update toolbar (handle both Unix and Windows paths)
@@ -310,24 +320,45 @@ ${bodyHtml}
 
     const iframe = document.createElement("iframe");
     iframe.id = "content-frame";
-    iframe.sandbox.add("allow-same-origin");
+    // Sandbox blocks scripts; allow-same-origin lets us access contentDocument
+    iframe.setAttribute("sandbox", "allow-same-origin");
     // Disable autocomplete/autofill features that might add UI elements
     iframe.setAttribute("autocomplete", "off");
+
+    // Strip scripts and store for restoration (Tauri webview ignores sandbox)
+    let scriptId = 0;
+    let safeHtml = htmlContent.replace(
+      /<script\b[^>]*>[\s\S]*?<\/script>/gi,
+      (match) => {
+        const id = `hone-script-${scriptId++}`;
+        state.scriptMap.set(id, match);
+        return `<!--${id}-->`;
+      }
+    );
+
+    // Inject CSP to block ALL JavaScript (including inline handlers like onload, onerror)
+    const csp = `<meta http-equiv="Content-Security-Policy" content="script-src 'none';" data-hone-csp>`;
+    if (safeHtml.includes('<head>')) {
+      safeHtml = safeHtml.replace('<head>', `<head>${csp}`);
+    } else if (safeHtml.includes('<head ')) {
+      safeHtml = safeHtml.replace(/<head\s[^>]*>/, `$&${csp}`);
+    } else if (safeHtml.includes('<html>')) {
+      safeHtml = safeHtml.replace('<html>', `<html><head>${csp}</head>`);
+    } else if (safeHtml.includes('<html ')) {
+      safeHtml = safeHtml.replace(/<html\s[^>]*>/, `$&<head>${csp}</head>`);
+    }
+
+    // Use srcdoc instead of doc.write() - this properly respects sandbox
+    iframe.srcdoc = safeHtml;
     container.appendChild(iframe);
     state.contentFrame = iframe;
 
-    // Wait for iframe to be ready
+    // Wait for srcdoc content to load
     await new Promise<void>((resolve) => {
       iframe.onload = () => resolve();
-      iframe.src = "about:blank";
     });
 
     const doc = iframe.contentDocument!;
-
-    // Write the HTML content
-    doc.open();
-    doc.write(htmlContent);
-    doc.close();
 
     // Inject base tag for relative paths (only for HTML files - markdown already has it inline)
     if (fileType === 'html') {
@@ -335,11 +366,21 @@ ${bodyHtml}
       base.href = `file://${dirPath}/`;
       base.setAttribute(EDITOR_ATTR, "base");
       doc.head.insertBefore(base, doc.head.firstChild);
+
+      // Transform images to use Tauri asset protocol for display
+      transformImagesForDisplay(doc, dirPath);
     }
 
     // Inject editing capabilities
     injectStyles(doc);
-    injectEditable(doc);
+
+    if (fileType === 'html' && state.regions.length > 0) {
+      // Use region-based editing for HTML files
+      injectEditableRegions(doc, state.regions);
+    } else {
+      // For markdown, use selector-based approach (legacy)
+      injectEditableForMarkdown(doc);
+    }
 
     // Track changes
     doc.addEventListener("input", markDirty);
@@ -356,6 +397,41 @@ ${bodyHtml}
   }
 }
 
+/**
+ * Legacy selector-based editable injection for markdown files
+ */
+function injectEditableForMarkdown(doc: Document): void {
+  const EDITABLE_SELECTORS = [
+    "p", "h1", "h2", "h3", "h4", "h5", "h6",
+    "li", "td", "th", "blockquote", "figcaption",
+    "dt", "dd", "label", "legend", "summary",
+  ].join(", ");
+
+  const EDITOR_CLASS = "html-editor-editable";
+
+  const elements = doc.querySelectorAll(EDITABLE_SELECTORS);
+
+  elements.forEach((el) => {
+    // Skip if element has no direct text content or only whitespace
+    const hasDirectText = Array.from(el.childNodes).some(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
+    );
+
+    // Also include elements that have only inline children (like <strong>, <em>)
+    const hasInlineContent = el.children.length > 0 &&
+      Array.from(el.children).every((child) => {
+        const display = window.getComputedStyle(child).display;
+        return display === "inline" || display === "inline-block";
+      });
+
+    if (hasDirectText || hasInlineContent || el.children.length === 0) {
+      el.setAttribute("contenteditable", "true");
+      el.classList.add(EDITOR_CLASS);
+      el.setAttribute(EDITOR_ATTR, "true");
+    }
+  });
+}
+
 async function saveToPath(path: string): Promise<void> {
   if (!state.contentFrame?.contentDocument) return;
 
@@ -368,14 +444,18 @@ async function saveToPath(path: string): Promise<void> {
       const markdownContent = serializeToMarkdown(state.contentFrame.contentDocument);
       // Prepend frontmatter if we had it originally
       content = stringifyWithFrontmatter(markdownContent, state.frontmatter);
-    } else {
-      // Export as HTML
-      const doctype = state.fileType === 'markdown' ? "<!DOCTYPE html>" : state.originalDoctype;
-      let html = extractCleanHtml(state.contentFrame.contentDocument, doctype);
+    } else if (state.fileType === 'html' && state.originalHtml && state.regions.length > 0) {
+      // HTML file with surgical editing - sync from DOM and replace only changed regions
+      syncRegionsFromDom(state.contentFrame.contentDocument as unknown as Document, state.regions);
+      content = surgicalReplace(state.originalHtml, state.regions);
 
-      // Revert asset URLs back to relative paths
-      const dirPath: string = await invoke("get_file_dir", { path });
-      content = revertAssetUrls(html, dirPath);
+      // Restore scripts that were stripped for safe editing
+      state.scriptMap.forEach((script, id) => {
+        content = content.replace(`<!--${id}-->`, script);
+      });
+    } else {
+      // Fallback: full serialization for markdown-to-HTML export or edge cases
+      content = state.originalDoctype + "\n" + state.contentFrame.contentDocument.documentElement.outerHTML;
     }
 
     await invoke("write_file", { path, content });
@@ -388,7 +468,12 @@ async function saveToPath(path: string): Promise<void> {
     // If we saved as markdown, update the original markdown
     if (targetType === 'markdown') {
       state.originalMarkdown = content;
-    } else {
+      state.originalHtml = null;
+      state.regions = [];
+    } else if (state.fileType === 'html') {
+      // Update originalHtml and re-parse regions for subsequent edits
+      state.originalHtml = content;
+      state.regions = parseEditableRegions(content);
       state.originalMarkdown = null;
       state.frontmatter = null;
     }
