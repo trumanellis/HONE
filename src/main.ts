@@ -31,7 +31,6 @@ import {
   serializeToMarkdown,
   extractFrontmatter,
   stringifyWithFrontmatter,
-  applyMarkdownFormat,
   getMarkdownStyles,
 } from "./editor/markdown";
 import type { FileType, FrontmatterData } from "./types/editor";
@@ -248,43 +247,6 @@ function handleKeyboardShortcut(e: KeyboardEvent): void {
   const tab = getActiveTab();
   if (tab?.contentFrame?.contentDocument) {
     const iframeDoc = tab.contentFrame.contentDocument;
-
-    if (key === "b") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (tab.fileType === 'markdown') {
-        applyMarkdownFormat(iframeDoc, 'bold');
-      } else {
-        iframeDoc.execCommand("bold", false);
-      }
-      markDirty();
-      return;
-    }
-
-    if (key === "i" && !e.shiftKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (tab.fileType === 'markdown') {
-        applyMarkdownFormat(iframeDoc, 'italic');
-      } else {
-        iframeDoc.execCommand("italic", false);
-      }
-      markDirty();
-      return;
-    }
-
-    if (key === "u") {
-      e.preventDefault();
-      e.stopPropagation();
-      // Underline not typically used in markdown, use code format instead
-      if (tab.fileType === 'markdown') {
-        applyMarkdownFormat(iframeDoc, 'code');
-      } else {
-        iframeDoc.execCommand("underline", false);
-      }
-      markDirty();
-      return;
-    }
 
     if (key === "z" && !e.shiftKey) {
       e.preventDefault();

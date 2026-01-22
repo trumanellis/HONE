@@ -47,7 +47,6 @@ You see what your users will see, and you fix what needs fixing.
 ### Core Editing
 - **Open HTML & Markdown** — Native file dialog or drag-and-drop to open `.html`, `.htm`, `.md`, or `.markdown` files
 - **Inline Editing** — Click any text element to edit directly in the rendered view
-- **Text Formatting** — Bold, italic, underline with familiar shortcuts (Markdown-aware)
 - **Undo/Redo** — Full undo/redo support via toolbar buttons or keyboard shortcuts
 - **Find & Replace** — Search and replace text across the document (⌘F / ⌘H)
 
@@ -79,9 +78,24 @@ You see what your users will see, and you fix what needs fixing.
 
 ## Installation
 
-### From Releases
+### Download
 
-Download the latest build for your platform from [Releases](https://github.com/trumanellis/HONE/releases).
+Download the latest build for your platform from [Releases](https://github.com/trumanellis/HONE/releases):
+
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon) | `HONE_x.x.x_aarch64.dmg` |
+| macOS (Intel) | `HONE_x.x.x_x64.dmg` |
+| Windows | `HONE_x.x.x_x64-setup.exe` or `.msi` |
+| Linux | `HONE_x.x.x_amd64.deb` or `.AppImage` |
+
+### Install
+
+**macOS**: Open the `.dmg` and drag HONE to Applications.
+
+**Windows**: Run the `.exe` installer or `.msi`.
+
+**Linux**: Install the `.deb` with `sudo dpkg -i hone_*.deb` or run the `.AppImage` directly.
 
 ### Build from Source
 
@@ -128,13 +142,10 @@ npm run tauri build
 | ⌘/Ctrl+Shift+S | Save As |
 | ⌘/Ctrl+W | Close tab |
 
-#### Text Formatting
+#### Edit Operations
 
 | Shortcut | Action |
 |----------|--------|
-| ⌘/Ctrl+B | Bold |
-| ⌘/Ctrl+I | Italic |
-| ⌘/Ctrl+U | Underline (code in Markdown) |
 | ⌘/Ctrl+Z | Undo |
 | ⌘/Ctrl+Shift+Z | Redo |
 
@@ -229,17 +240,14 @@ No friction. No context switching. Just the final pass that brings it to edge.
 
 ## Roadmap
 
-### v0.1 — Complete
+### v1.0 — Current Release
 - [x] Open and render local HTML files
 - [x] Open and render Markdown files with live preview
 - [x] Round-trip Markdown editing (edit visually, save as Markdown)
 - [x] Frontmatter preservation for Markdown
 - [x] Inline text editing with contenteditable
-- [x] Text formatting (bold, italic, underline)
 - [x] Save back to source file
 - [x] Relative asset path support (images in HTML and Markdown)
-
-### v0.2 — Complete
 - [x] Multiple file tabs with vertical sidebar
 - [x] Recent files menu on welcome screen
 - [x] Drag-and-drop file opening
@@ -252,8 +260,9 @@ No friction. No context switching. Just the final pass that brings it to edge.
 - [x] Format conversion (HTML ↔ Markdown)
 - [x] Surgical HTML editing (preserves formatting)
 - [x] Undo/Redo toolbar buttons
+- [x] Cross-platform builds (macOS, Windows, Linux)
 
-### v0.3 — Next
+### v1.1 — Next
 - [ ] Class and attribute editing panel
 - [ ] Inline style adjustments
 - [ ] Element reordering via drag
