@@ -136,6 +136,38 @@ function handleRedo(): void {
   }
 }
 
+// Refresh/reload current file from disk
+async function handleRefresh(): Promise<void> {
+  const tab = getActiveTab();
+  if (!tab?.currentPath) return;
+
+  // Warn about unsaved changes
+  if (tab.isDirty) {
+    const shouldRefresh = confirm(`"${tab.filename}" has unsaved changes. Reload anyway?`);
+    if (!shouldRefresh) return;
+  }
+
+  const path = tab.currentPath;
+  const tabId = tab.id;
+
+  // Close the current tab and reload the file
+  // Remove iframe
+  if (tab.contentFrame) {
+    tab.contentFrame.remove();
+  }
+
+  // Remove tab from tab bar
+  tabBar.removeTab(tabId);
+
+  // Detach image overlay
+  imageOverlayManager.detach();
+
+  // Reload the file
+  await loadFile(path);
+
+  showToast("Refreshed");
+}
+
 // Initialize toolbar
 const toolbarContainer = document.getElementById("toolbar")!;
 const toolbar = createToolbar(toolbarContainer, {
@@ -254,6 +286,14 @@ function handleKeyboardShortcut(e: KeyboardEvent): void {
     return;
   }
 
+  // Refresh/reload current file with Cmd+R
+  if (key === "r") {
+    e.preventDefault();
+    e.stopPropagation();
+    handleRefresh();
+    return;
+  }
+
   // Undo/Redo - use our custom UndoManager instead of browser's execCommand
   if (key === "z" && !e.shiftKey) {
     e.preventDefault();
@@ -284,6 +324,7 @@ listen("menu-close-tab", () => {
     closeTab(activeId);
   }
 });
+listen("menu-refresh", () => handleRefresh());
 
 // Unsaved changes warning
 window.addEventListener("beforeunload", (e) => {

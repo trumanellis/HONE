@@ -228,6 +228,9 @@ pub fn run() {
             let close_tab = MenuItemBuilder::with_id("close_tab", "Close Tab")
                 .accelerator("CmdOrCtrl+W")
                 .build(app)?;
+            let refresh = MenuItemBuilder::with_id("refresh", "Refresh")
+                .accelerator("CmdOrCtrl+R")
+                .build(app)?;
 
             // App menu (macOS)
             let app_menu = SubmenuBuilder::new(app, "HONE")
@@ -246,6 +249,8 @@ pub fn run() {
                 .item(&open)
                 .item(&save)
                 .item(&save_as)
+                .separator()
+                .item(&refresh)
                 .separator()
                 .item(&close_tab)
                 .build()?;
@@ -288,6 +293,9 @@ pub fn run() {
                     }
                     "close_tab" => {
                         let _ = app.emit("menu-close-tab", ());
+                    }
+                    "refresh" => {
+                        let _ = app.emit("menu-refresh", ());
                     }
                     _ => {}
                 }
