@@ -1,6 +1,8 @@
 import type { FileType } from "../types/editor";
 import type { EditableRegion } from "./html-parser";
 import type { FrontmatterData } from "../types/editor";
+import type { UndoManager } from "../undo/UndoManager";
+import type { TextEditTracker } from "../undo/TextEditTracker";
 
 export interface TabState {
   id: string;
@@ -16,6 +18,9 @@ export interface TabState {
   originalHtml: string | null;
   regions: EditableRegion[];
   scriptMap: Map<string, string>;
+  // Undo system
+  undoManager: UndoManager | null;
+  textEditTracker: TextEditTracker | null;
 }
 
 export interface TabBarCallbacks {

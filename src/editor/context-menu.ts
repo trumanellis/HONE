@@ -11,6 +11,7 @@ export interface ContextMenuCallbacks {
   onRemoveLink: (element: HTMLAnchorElement) => void;
   onReplaceImage: (element: HTMLImageElement) => void;
   onRemoveImage: (element: HTMLImageElement) => void;
+  onInsertImage: (afterElement: HTMLElement) => void;
   onConvertBlock: (element: HTMLElement, targetTag: string) => void;
 }
 
@@ -39,8 +40,8 @@ export class ContextMenu {
     // Add styles to the document
     this.injectStyles(doc);
 
-    // Listen for context menu events
-    doc.addEventListener('contextmenu', this.handleContextMenu.bind(this));
+    // Listen for context menu events (capture phase to run before default behavior)
+    doc.addEventListener('contextmenu', this.handleContextMenu.bind(this), true);
 
     // Close menu on click outside or escape
     doc.addEventListener('click', this.close.bind(this));
@@ -122,91 +123,117 @@ export class ContextMenu {
   private handleContextMenu(e: MouseEvent): void {
     const target = e.target as HTMLElement;
 
-    // Only show context menu for editable elements or their children
-    const editableParent = target.closest('[contenteditable="true"]') as HTMLElement;
-    if (!editableParent) return;
+    // Check if clicked on an image - images get special handling even outside contenteditable
+    const clickedImage = target.closest('img') as HTMLImageElement | null;
+
+    // Find contenteditable parent (for text/link operations)
+    const editableParent = target.closest('[contenteditable="true"]') as HTMLElement | null;
+
+    // Need either an editable parent OR clicking on an image
+    if (!editableParent && !clickedImage) return;
 
     e.preventDefault();
-    // Target element for context
+    e.stopPropagation();
 
-    const items = this.buildMenuItems(target, editableParent);
+    const items = this.buildMenuItems(target, editableParent, clickedImage);
     this.showMenu(e.clientX, e.clientY, items);
   }
 
-  private buildMenuItems(clicked: HTMLElement, editable: HTMLElement): MenuItem[] {
+  private buildMenuItems(
+    clicked: HTMLElement,
+    editable: HTMLElement | null,
+    clickedImage: HTMLImageElement | null
+  ): MenuItem[] {
     const items: MenuItem[] = [];
 
-    // Check if clicked on a link
-    const link = clicked.closest('a') as HTMLAnchorElement | null;
-    if (link) {
-      items.push({
-        label: 'Edit Link...',
-        action: () => this.callbacks.onEditLink(link),
-      });
-      items.push({
-        label: 'Remove Link',
-        action: () => this.callbacks.onRemoveLink(link),
-      });
-      items.push({ label: '', action: () => {}, separator: true });
-    } else if (this.doc?.getSelection()?.toString()) {
-      // Has text selection - offer to add link
-      items.push({
-        label: 'Add Link...',
-        action: () => this.callbacks.onInsertLink(editable),
-      });
-      items.push({ label: '', action: () => {}, separator: true });
+    // Link options only available inside contenteditable
+    if (editable) {
+      const link = clicked.closest('a') as HTMLAnchorElement | null;
+      if (link) {
+        items.push({
+          label: 'Edit Link...',
+          action: () => this.callbacks.onEditLink(link),
+        });
+        items.push({
+          label: 'Remove Link',
+          action: () => this.callbacks.onRemoveLink(link),
+        });
+        items.push({ label: '', action: () => {}, separator: true });
+      } else if (this.doc?.getSelection()?.toString()) {
+        // Has text selection - offer to add link
+        items.push({
+          label: 'Add Link...',
+          action: () => this.callbacks.onInsertLink(editable),
+        });
+        items.push({ label: '', action: () => {}, separator: true });
+      }
     }
 
-    // Check if clicked on an image
-    const image = clicked.closest('img') as HTMLImageElement | null;
-    if (image) {
+    // Image options - available whether inside contenteditable or not
+    if (clickedImage) {
       items.push({
         label: 'Replace Image...',
-        action: () => this.callbacks.onReplaceImage(image),
+        action: () => this.callbacks.onReplaceImage(clickedImage),
       });
       items.push({
         label: 'Remove Image',
-        action: () => this.callbacks.onRemoveImage(image),
+        action: () => this.callbacks.onRemoveImage(clickedImage),
       });
       items.push({ label: '', action: () => {}, separator: true });
     }
 
-    // Block conversion options
-    const tagName = editable.tagName.toLowerCase();
-    const convertibleTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+    // Block conversion options only available inside contenteditable
+    if (editable) {
+      const tagName = editable.tagName.toLowerCase();
+      const convertibleTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 
-    if (convertibleTags.includes(tagName)) {
-      items.push({
-        label: 'Convert to...',
-        action: () => {},
-        disabled: true,
-      });
+      if (convertibleTags.includes(tagName)) {
+        items.push({
+          label: 'Convert to...',
+          action: () => {},
+          disabled: true,
+        });
 
-      const conversions = [
-        { tag: 'p', label: 'Paragraph' },
-        { tag: 'h1', label: 'Heading 1' },
-        { tag: 'h2', label: 'Heading 2' },
-        { tag: 'h3', label: 'Heading 3' },
-        { tag: 'h4', label: 'Heading 4' },
-      ];
+        const conversions = [
+          { tag: 'p', label: 'Paragraph' },
+          { tag: 'h1', label: 'Heading 1' },
+          { tag: 'h2', label: 'Heading 2' },
+          { tag: 'h3', label: 'Heading 3' },
+          { tag: 'h4', label: 'Heading 4' },
+        ];
 
-      for (const { tag, label } of conversions) {
-        if (tag !== tagName) {
-          items.push({
-            label: `  ${label}`,
-            action: () => this.callbacks.onConvertBlock(editable, tag),
-          });
+        for (const { tag, label } of conversions) {
+          if (tag !== tagName) {
+            items.push({
+              label: `  ${label}`,
+              action: () => this.callbacks.onConvertBlock(editable, tag),
+            });
+          }
         }
+
+        items.push({ label: '', action: () => {}, separator: true });
       }
 
-      items.push({ label: '', action: () => {}, separator: true });
+      // Insert image option (available for block elements inside contenteditable)
+      if (!clickedImage) {
+        items.push({
+          label: 'Insert Image...',
+          action: () => this.callbacks.onInsertImage(editable),
+        });
+        items.push({ label: '', action: () => {}, separator: true });
+      }
+
+      // Delete element option (available for editable elements)
+      items.push({
+        label: 'Delete Element',
+        action: () => this.callbacks.onDelete(editable),
+      });
     }
 
-    // Delete element option (always available for editable elements)
-    items.push({
-      label: 'Delete Element',
-      action: () => this.callbacks.onDelete(editable),
-    });
+    // Remove trailing separator if present
+    if (items.length > 0 && items[items.length - 1].separator) {
+      items.pop();
+    }
 
     return items;
   }

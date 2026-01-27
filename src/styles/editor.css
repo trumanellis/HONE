@@ -566,3 +566,68 @@ iframe mark.hone-find-highlight.current {
   white-space: nowrap;
   max-width: 100%;
 }
+
+/* Image Overlay Controls */
+.hone-image-overlay-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.hone-image-overlay {
+  position: fixed;
+  display: none;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 8px;
+  gap: 4px;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.hone-image-overlay:hover {
+  background: rgba(92, 143, 255, 0.1);
+  outline: 2px solid rgba(92, 143, 255, 0.5);
+  outline-offset: -2px;
+}
+
+.hone-image-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: rgba(30, 30, 30, 0.95);
+  color: var(--color-polish);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              opacity var(--duration-fast) var(--ease-out);
+  padding: 0;
+  pointer-events: auto;
+  opacity: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.hone-image-overlay:hover .hone-image-btn {
+  opacity: 1;
+}
+
+.hone-image-btn:hover {
+  background: var(--color-steel);
+  color: var(--color-blade);
+}
+
+.hone-image-btn.delete:hover {
+  background: var(--color-forge);
+  color: #fff;
+}
+
+.hone-image-btn svg {
+  width: 16px;
+  height: 16px;
+}

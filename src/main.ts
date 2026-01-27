@@ -14,10 +14,20 @@ import {
   editLink,
   insertLink,
   removeLink,
-  replaceImage,
-  removeImage,
   convertBlock,
+  selectImageFile,
+  resolveImageSrc,
 } from "./editor/element-operations";
+import { UndoManager } from "./undo/UndoManager";
+import { TextEditTracker } from "./undo/TextEditTracker";
+import { DragDropManager } from "./editor/drag-drop";
+import { ImageOverlayManager } from "./editor/image-overlay";
+import { captureDocumentSelection } from "./undo/SelectionUtils";
+import {
+  ImageReplaceCommand,
+  ImageInsertCommand,
+  ImageDeleteCommand,
+} from "./undo/commands/ImageCommands";
 import { injectEditableRegions, injectStyles, EDITOR_ATTR } from "./editor/inject";
 import {
   parseEditableRegions,
@@ -52,6 +62,7 @@ interface SessionData {
 const tabBarContainer = document.getElementById("tab-bar-container")!;
 let tabBar: TabBar;
 let contextMenu: ContextMenu;
+let imageOverlayManager: ImageOverlayManager;
 
 // Helper to get active tab state
 function getActiveTab(): TabState | null {
@@ -109,19 +120,19 @@ function showToast(message: string): void {
 // Undo/Redo handlers
 function handleUndo(): void {
   const tab = getActiveTab();
-  if (tab?.contentFrame?.contentDocument) {
-    // Focus iframe to ensure execCommand works
-    tab.contentFrame.contentWindow?.focus();
-    tab.contentFrame.contentDocument.execCommand("undo", false);
+  if (tab?.undoManager?.canUndo()) {
+    // Flush any pending text edits before undo
+    tab.textEditTracker?.flush();
+    tab.undoManager.undo();
+    markDirty();
   }
 }
 
 function handleRedo(): void {
   const tab = getActiveTab();
-  if (tab?.contentFrame?.contentDocument) {
-    // Focus iframe to ensure execCommand works
-    tab.contentFrame.contentWindow?.focus();
-    tab.contentFrame.contentDocument.execCommand("redo", false);
+  if (tab?.undoManager?.canRedo()) {
+    tab.undoManager.redo();
+    markDirty();
   }
 }
 
@@ -243,24 +254,19 @@ function handleKeyboardShortcut(e: KeyboardEvent): void {
     return;
   }
 
-  // Text formatting - only when we have an iframe with content
-  const tab = getActiveTab();
-  if (tab?.contentFrame?.contentDocument) {
-    const iframeDoc = tab.contentFrame.contentDocument;
+  // Undo/Redo - use our custom UndoManager instead of browser's execCommand
+  if (key === "z" && !e.shiftKey) {
+    e.preventDefault();
+    e.stopPropagation();
+    handleUndo();
+    return;
+  }
 
-    if (key === "z" && !e.shiftKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      iframeDoc.execCommand("undo", false);
-      return;
-    }
-
-    if ((key === "z" && e.shiftKey) || key === "y") {
-      e.preventDefault();
-      e.stopPropagation();
-      iframeDoc.execCommand("redo", false);
-      return;
-    }
+  if ((key === "z" && e.shiftKey) || key === "y") {
+    e.preventDefault();
+    e.stopPropagation();
+    handleRedo();
+    return;
   }
 }
 
@@ -272,6 +278,12 @@ document.addEventListener("keydown", handleKeyboardShortcut, true);
 listen("menu-open", () => handleOpen());
 listen("menu-save", () => handleSave());
 listen("menu-save-as", () => handleSaveAs());
+listen("menu-close-tab", () => {
+  const activeId = tabBar.getActiveTabId();
+  if (activeId) {
+    closeTab(activeId);
+  }
+});
 
 // Unsaved changes warning
 window.addEventListener("beforeunload", (e) => {
@@ -368,6 +380,8 @@ async function loadFile(path: string): Promise<void> {
       originalHtml: null as string | null,
       regions: [] as EditableRegion[],
       scriptMap: new Map<string, string>(),
+      undoManager: null as UndoManager | null,
+      textEditTracker: null as TextEditTracker | null,
     };
 
     let htmlContent: string;
@@ -494,6 +508,24 @@ ${bodyHtml}
     // Attach paste handler for rich content
     attachPasteHandler(doc);
 
+    // Initialize undo system
+    const undoManager = new UndoManager(50);
+    undoManager.setDocument(doc);
+    tabState.undoManager = undoManager;
+
+    // Initialize text edit tracking
+    const textEditTracker = new TextEditTracker(undoManager, doc, markDirty, 500);
+    textEditTracker.attach();
+    textEditTracker.recordAllRegionStates();
+    tabState.textEditTracker = textEditTracker;
+
+    // Initialize drag-drop reordering
+    const dragDropManager = new DragDropManager(iframe, undoManager, textEditTracker, markDirty);
+    dragDropManager.attach();
+
+    // Attach image overlay buttons
+    imageOverlayManager.attach(iframe);
+
     // Create tab and switch to it
     const tabId = tabBar.createTab(tabState);
     if (tabId) {
@@ -595,6 +627,11 @@ function switchToTab(tabId: string): void {
     findReplaceBar.setIframe(tab.contentFrame);
   }
 
+  // Update image overlay to show buttons for this tab's images
+  if (tab.contentFrame) {
+    imageOverlayManager.attach(tab.contentFrame);
+  }
+
   // Save session state (fire and forget)
   saveSession();
 }
@@ -635,6 +672,9 @@ async function closeTab(tabId: string): Promise<void> {
       }
       toolbar.setFilename("");
       toolbar.setUnsaved(false);
+
+      // Detach image overlay when no tabs are open
+      imageOverlayManager.detach();
 
       // Refresh recent files list
       initializeRecentFiles();
@@ -713,6 +753,56 @@ async function saveToPath(path: string): Promise<void> {
   }
 }
 
+// Shared image operation handlers (used by both ContextMenu and ImageOverlayManager)
+async function handleReplaceImage(image: HTMLImageElement): Promise<void> {
+  const tab = getActiveTab();
+  if (!tab?.currentPath || !tab.undoManager || !tab.contentFrame?.contentDocument) return;
+
+  tab.textEditTracker?.flush();
+
+  const dirPath: string = await invoke("get_file_dir", { path: tab.currentPath });
+  const imagePath = await selectImageFile();
+  if (!imagePath) return;
+
+  const newSrc = resolveImageSrc(imagePath, dirPath);
+  const selectionBefore = captureDocumentSelection(tab.contentFrame.contentDocument);
+
+  const command = new ImageReplaceCommand(image, newSrc, selectionBefore);
+  tab.undoManager.execute(command);
+  markDirty();
+
+  tab.textEditTracker?.recordAllRegionStates();
+}
+
+function handleRemoveImage(image: HTMLImageElement): void {
+  const tab = getActiveTab();
+  if (!tab?.undoManager || !tab.contentFrame?.contentDocument) {
+    // Fallback to old behavior if undo system not initialized
+    const figure = image.closest('figure');
+    if (figure) {
+      figure.remove();
+    } else {
+      image.remove();
+    }
+    markDirty();
+    return;
+  }
+
+  tab.textEditTracker?.flush();
+
+  const selectionBefore = captureDocumentSelection(tab.contentFrame.contentDocument);
+  const command = new ImageDeleteCommand(image, selectionBefore);
+  tab.undoManager.execute(command);
+  markDirty();
+
+  tab.textEditTracker?.recordAllRegionStates();
+
+  // Update image overlay to remove the deleted image's overlay
+  if (tab.contentFrame) {
+    imageOverlayManager.attach(tab.contentFrame);
+  }
+}
+
 // Initialize TabBar with callbacks
 tabBar = new TabBar(tabBarContainer, {
   onTabSwitch: (tabId) => switchToTab(tabId),
@@ -758,19 +848,43 @@ contextMenu = new ContextMenu({
   onRemoveLink: (link) => {
     removeLink(link, markDirty);
   },
-  onReplaceImage: async (image) => {
+  onReplaceImage: handleReplaceImage,
+  onRemoveImage: handleRemoveImage,
+  onInsertImage: async (afterElement) => {
     const tab = getActiveTab();
-    if (!tab?.currentPath) return;
+    if (!tab?.currentPath || !tab.undoManager || !tab.contentFrame?.contentDocument) return;
+
+    // Flush any pending text edits
+    tab.textEditTracker?.flush();
 
     const dirPath: string = await invoke("get_file_dir", { path: tab.currentPath });
-    await replaceImage(image, dirPath, markDirty);
-  },
-  onRemoveImage: (image) => {
-    removeImage(image, markDirty);
+    const imagePath = await selectImageFile();
+    if (!imagePath) return;
+
+    const src = resolveImageSrc(imagePath, dirPath);
+    const parent = afterElement.parentElement;
+    if (!parent) return;
+
+    const insertIndex = Array.from(parent.childNodes).indexOf(afterElement as ChildNode) + 1;
+    const selectionBefore = captureDocumentSelection(tab.contentFrame.contentDocument);
+
+    const command = new ImageInsertCommand(parent, insertIndex, src, selectionBefore);
+    tab.undoManager.execute(command);
+    markDirty();
+
+    // Re-record region states since DOM structure changed
+    tab.textEditTracker?.recordAllRegionStates();
   },
   onConvertBlock: (element, targetTag) => {
     convertBlock(element, targetTag, markDirty);
   },
+});
+
+// Initialize ImageOverlayManager for hover buttons on images
+const editorContainer = document.getElementById("editor-container")!;
+imageOverlayManager = new ImageOverlayManager(editorContainer, {
+  onReplace: handleReplaceImage,
+  onRemove: handleRemoveImage,
 });
 
 // Handle drag-and-drop file opening

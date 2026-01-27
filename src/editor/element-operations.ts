@@ -6,6 +6,36 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 /**
+ * Open file dialog for selecting an image file.
+ * Returns the selected file path or null if cancelled.
+ */
+export async function selectImageFile(): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    filters: [
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] },
+    ],
+  });
+
+  return selected as string | null;
+}
+
+/**
+ * Resolve an image file path to the appropriate src attribute value.
+ * If the image is within the document's directory, returns a relative path.
+ * Otherwise, returns a Tauri asset URL for the absolute path.
+ */
+export function resolveImageSrc(imagePath: string, dirPath: string): string {
+  if (imagePath.startsWith(dirPath)) {
+    // Make relative path
+    return imagePath.slice(dirPath.length + 1);
+  } else {
+    // Use absolute path converted to asset URL
+    return convertFileSrc(imagePath);
+  }
+}
+
+/**
  * Delete an element from the document
  * Handles proper cleanup and marks document as dirty
  */
@@ -217,5 +247,43 @@ export function toggleListType(
   // Replace old list with new one
   parent.parentNode?.replaceChild(newParent, parent);
 
+  onDirty();
+}
+
+/**
+ * Insert a new image after the specified element (opens file dialog)
+ */
+export async function insertImage(
+  afterElement: HTMLElement,
+  dirPath: string,
+  onDirty: () => void
+): Promise<void> {
+  const doc = afterElement.ownerDocument;
+
+  const selected = await open({
+    multiple: false,
+    filters: [
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] },
+    ],
+  });
+
+  if (!selected) return;
+
+  const imagePath = selected as string;
+  let src: string;
+
+  if (imagePath.startsWith(dirPath)) {
+    // Make relative path
+    src = imagePath.slice(dirPath.length + 1);
+  } else {
+    // Use absolute path converted to asset URL
+    src = convertFileSrc(imagePath);
+  }
+
+  const img = doc.createElement('img');
+  img.src = src;
+  img.alt = '';
+
+  afterElement.parentNode?.insertBefore(img, afterElement.nextSibling);
   onDirty();
 }

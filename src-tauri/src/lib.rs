@@ -225,6 +225,9 @@ pub fn run() {
             let save_as = MenuItemBuilder::with_id("save_as", "Save As...")
                 .accelerator("CmdOrCtrl+Shift+S")
                 .build(app)?;
+            let close_tab = MenuItemBuilder::with_id("close_tab", "Close Tab")
+                .accelerator("CmdOrCtrl+W")
+                .build(app)?;
 
             // App menu (macOS)
             let app_menu = SubmenuBuilder::new(app, "HONE")
@@ -244,7 +247,7 @@ pub fn run() {
                 .item(&save)
                 .item(&save_as)
                 .separator()
-                .close_window()
+                .item(&close_tab)
                 .build()?;
 
             let edit_menu = SubmenuBuilder::new(app, "Edit")
@@ -260,8 +263,6 @@ pub fn run() {
             let window_menu = SubmenuBuilder::new(app, "Window")
                 .minimize()
                 .maximize()
-                .separator()
-                .close_window()
                 .build()?;
 
             let menu = MenuBuilder::new(app)
@@ -284,6 +285,9 @@ pub fn run() {
                     }
                     "save_as" => {
                         let _ = app.emit("menu-save-as", ());
+                    }
+                    "close_tab" => {
+                        let _ = app.emit("menu-close-tab", ());
                     }
                     _ => {}
                 }
