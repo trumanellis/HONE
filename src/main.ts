@@ -421,6 +421,7 @@ async function loadFile(path: string): Promise<void> {
       originalHtml: null as string | null,
       regions: [] as EditableRegion[],
       scriptMap: new Map<string, string>(),
+      iframeSrcMap: new Map<string, { src: string; original: string }>(),
       undoManager: null as UndoManager | null,
       textEditTracker: null as TextEditTracker | null,
     };
@@ -487,6 +488,27 @@ ${bodyHtml}
       }
     );
 
+    // Replace embedded iframes with placeholders — they can't work in HONE's sandbox
+    // (no scripts allowed, and relative URLs resolve against HONE's origin)
+    let iframeId = 0;
+    safeHtml = safeHtml.replace(
+      /<iframe\b([^>]*)src\s*=\s*("[^"]*"|'[^']*')([^>]*)>[\s\S]*?<\/iframe>/gi,
+      (_match, before, srcAttr, after) => {
+        const id = `hone-iframe-${iframeId++}`;
+        const src = srcAttr.replace(/^["']|["']$/g, '');
+        // Extract title attribute if present
+        const attrs = before + after;
+        const titleMatch = attrs.match(/title\s*=\s*"([^"]*)"/i);
+        const title = titleMatch ? titleMatch[1] : src;
+        tabState.iframeSrcMap.set(id, { src, original: _match });
+        return `<div data-hone-iframe-id="${id}" data-hone-iframe-src="${src}" class="hone-iframe-placeholder">
+          <div class="hone-iframe-label">Embedded content</div>
+          <div class="hone-iframe-title">${title}</div>
+          <button class="hone-iframe-open-btn" type="button">Open in Browser</button>
+        </div>`;
+      }
+    );
+
     // Inject CSP to block ALL JavaScript (including inline handlers like onload, onerror)
     const csp = `<meta http-equiv="Content-Security-Policy" content="script-src 'none';" data-hone-csp>`;
     if (safeHtml.includes('<head>')) {
@@ -522,6 +544,19 @@ ${bodyHtml}
     // Transform images to use Tauri asset protocol for display
     // This handles both HTML files and raw HTML <img> tags in markdown
     transformImagesForDisplay(doc, dirPath);
+
+    // Wire up iframe placeholder "Open in Browser" buttons
+    const placeholders = doc.querySelectorAll('[data-hone-iframe-id]');
+    placeholders.forEach((el) => {
+      const btn = el.querySelector('.hone-iframe-open-btn');
+      const src = el.getAttribute('data-hone-iframe-src');
+      if (btn && src) {
+        btn.addEventListener('click', () => {
+          const absolutePath = src.startsWith('/') ? src : `${dirPath}/${src}`;
+          invoke('open_in_browser', { path: absolutePath });
+        });
+      }
+    });
 
     // Inject editing capabilities
     injectStyles(doc);
@@ -751,6 +786,15 @@ async function saveToPath(path: string): Promise<void> {
     } else {
       // Fallback: full serialization for markdown-to-HTML export or edge cases
       content = tab.originalDoctype + "\n" + tab.contentFrame.contentDocument.documentElement.outerHTML;
+
+      // Restore original iframe tags from placeholders
+      tab.iframeSrcMap.forEach(({ original }, id) => {
+        const placeholderRegex = new RegExp(
+          `<div[^>]*data-hone-iframe-id="${id}"[^>]*>[\\s\\S]*?<\\/div>`,
+          'g'
+        );
+        content = content.replace(placeholderRegex, original);
+      });
     }
 
     await invoke("write_file", { path, content });
@@ -1179,6 +1223,13 @@ async function restoreSession(): Promise<void> {
     }
   }
 }
+
+// Listen for CLI file open events
+listen<string[]>("open-files", async (event) => {
+  for (const filePath of event.payload) {
+    await loadFile(filePath);
+  }
+});
 
 // Call on page load - restore session instead of just recent files
 restoreSession();

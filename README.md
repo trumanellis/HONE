@@ -82,6 +82,12 @@ You see what your users will see, and you fix what needs fixing.
 - **Image Support** — Images load correctly from relative paths
 
 ### Quality of Life
+- **CLI Support** — Run `hone file.md` from the terminal to open files directly
+- **Single Instance** — Opening files from the CLI sends them to the existing window as new tabs
+- **Session Restore** — Reopens your previously open tabs and active file on launch
+- **Refresh** — Reload the current file from disk (⌘R) without losing your tab layout
+- **Drag-and-Drop Reordering** — Drag elements to reorder them within the document
+- **Image Overlay Controls** — Hover over images to replace or remove them inline
 - **Unsaved Changes Warning** — Prevents accidental data loss with visual indicators
 - **Rich Paste** — Paste HTML content from clipboard (sanitized for safety)
 - **Surgical HTML Editing** — Only modified text is changed; formatting and structure preserved
@@ -109,6 +115,23 @@ Download the latest build for your platform from [Releases](https://github.com/t
 
 **Linux**: Install the `.deb` with `sudo dpkg -i hone_*.deb` or run the `.AppImage` directly.
 
+### Command Line (macOS)
+
+After installing, create a symlink to use HONE from the terminal:
+
+```bash
+sudo ln -sf /Applications/HONE.app/Contents/MacOS/HONE /usr/local/bin/hone
+```
+
+Then open files directly:
+
+```bash
+hone README.md
+hone path/to/page.html
+```
+
+If HONE is already running, the file opens in a new tab in the existing window.
+
 ### Build from Source
 
 ```bash
@@ -124,9 +147,10 @@ npm run tauri build
 
 ### Opening Files
 
-1. **Click "open"** in the toolbar (or ⌘O)
-2. **Drag and drop** HTML or Markdown files onto the window
-3. **Click a recent file** from the welcome screen
+1. **From the terminal** — `hone file.md` (opens in existing window if running)
+2. **Click "open"** in the toolbar (or ⌘O)
+3. **Drag and drop** HTML or Markdown files onto the window
+4. **Click a recent file** from the welcome screen
 
 ### Editing
 
@@ -152,6 +176,7 @@ npm run tauri build
 | ⌘/Ctrl+O | Open file |
 | ⌘/Ctrl+S | Save |
 | ⌘/Ctrl+Shift+S | Save As |
+| ⌘/Ctrl+R | Refresh file from disk |
 | ⌘/Ctrl+W | Close tab |
 
 #### Edit Operations
@@ -205,18 +230,24 @@ hone/
 │   ├── editor/
 │   │   ├── inject.ts      # Contenteditable injection
 │   │   ├── html-parser.ts # AST-based HTML parsing
-│   │   ├── markdown.ts    # Markdown parsing/serialization
+│   │   ├── markdown/      # Markdown parsing/serialization
 │   │   ├── toolbar.ts     # Toolbar UI
 │   │   ├── tabs.ts        # Multi-tab management
 │   │   ├── find-replace.ts # Find & Replace functionality
 │   │   ├── context-menu.ts # Right-click context menu
+│   │   ├── drag-drop.ts   # Drag-and-drop element reordering
+│   │   ├── image-overlay.ts # Image hover controls
 │   │   └── element-operations.ts # Delete, link, image ops
+│   ├── undo/              # Undo/Redo system
+│   │   ├── UndoManager.ts
+│   │   ├── TextEditTracker.ts
+│   │   └── commands/      # Undo command implementations
 │   └── styles/
 │       ├── tokens.css     # Design tokens
 │       └── editor.css     # Main styles
 ├── src-tauri/             # Rust backend
 │   ├── src/
-│   │   ├── lib.rs         # Tauri commands (file I/O, recent files)
+│   │   ├── lib.rs         # Tauri commands, CLI handling, single instance
 │   │   └── main.rs
 │   └── tauri.conf.json
 └── test-files/            # Sample HTML for testing
@@ -252,32 +283,32 @@ No friction. No context switching. Just the final pass that brings it to edge.
 
 ## Roadmap
 
-### v1.0 — Current Release
-- [x] Open and render local HTML files
-- [x] Open and render Markdown files with live preview
-- [x] Round-trip Markdown editing (edit visually, save as Markdown)
-- [x] Frontmatter preservation for Markdown
+### v1.0
+- [x] Open and render local HTML and Markdown files
 - [x] Inline text editing with contenteditable
-- [x] Save back to source file
-- [x] Relative asset path support (images in HTML and Markdown)
-- [x] Multiple file tabs with vertical sidebar
-- [x] Recent files menu on welcome screen
-- [x] Drag-and-drop file opening
-- [x] Find & Replace (⌘F / ⌘H)
-- [x] Element deletion via context menu
-- [x] Link editing (edit URL/text, insert, remove)
-- [x] Image replace/remove via context menu
-- [x] Block conversion (paragraphs ↔ headings ↔ lists)
-- [x] Rich clipboard paste support
-- [x] Format conversion (HTML ↔ Markdown)
-- [x] Surgical HTML editing (preserves formatting)
-- [x] Undo/Redo toolbar buttons
+- [x] Multiple file tabs, recent files, drag-and-drop
+- [x] Find & Replace, context menu operations (delete, links, images, block conversion)
+- [x] Rich clipboard paste, format conversion (HTML ↔ Markdown)
+- [x] Surgical HTML editing, frontmatter preservation
 - [x] Cross-platform builds (macOS, Windows, Linux)
 
-### v1.1 — Next
+### v1.1
+- [x] Undo/Redo system with full history
+- [x] Image overlay controls (hover to replace/remove)
+- [x] Improved HTML rendering fidelity
+
+### v1.2
+- [x] Refresh file from disk (⌘R)
+- [x] Session restore (reopen tabs on launch)
+
+### v1.3 — Current Release
+- [x] CLI support (`hone file.md` from terminal)
+- [x] Single-instance mode (files open in existing window)
+- [x] Drag-and-drop element reordering
+
+### Next
 - [ ] Class and attribute editing panel
 - [ ] Inline style adjustments
-- [ ] Element reordering via drag
 - [ ] CSS file awareness and editing
 
 ### Future

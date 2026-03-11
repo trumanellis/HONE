@@ -18,6 +18,7 @@ export interface TabState {
   originalHtml: string | null;
   regions: EditableRegion[];
   scriptMap: Map<string, string>;
+  iframeSrcMap: Map<string, { src: string; original: string }>;
   // Undo system
   undoManager: UndoManager | null;
   textEditTracker: TextEditTracker | null;

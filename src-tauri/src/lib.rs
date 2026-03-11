@@ -115,6 +115,15 @@ async fn write_file(path: String, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_in_browser(path: String) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Failed to open in browser: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
 fn get_file_dir(path: String) -> Result<String, String> {
     Path::new(&path)
         .parent()
@@ -212,6 +221,32 @@ fn save_session(app: AppHandle, open_files: Vec<String>, active_file: Option<Str
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            // Second instance launched - resolve file paths and send to existing window
+            let files: Vec<String> = argv.into_iter()
+                .skip(1)
+                .filter(|arg| !arg.starts_with('-'))
+                .map(|arg| {
+                    let path = std::path::Path::new(&arg);
+                    if path.is_absolute() {
+                        arg
+                    } else {
+                        let cwd_path = std::path::Path::new(&cwd);
+                        cwd_path.join(&arg).to_string_lossy().to_string()
+                    }
+                })
+                .filter(|path| std::path::Path::new(path).exists())
+                .collect();
+
+            if !files.is_empty() {
+                let _ = app.emit("open-files", files);
+            }
+
+            // Focus the existing window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
@@ -279,6 +314,31 @@ pub fn run() {
 
             app.set_menu(menu)?;
 
+            // Handle initial CLI file arguments - emit after webview is ready
+            let cli_files: Vec<String> = std::env::args()
+                .skip(1)
+                .filter(|arg| !arg.starts_with('-'))
+                .map(|arg| {
+                    let path = std::path::Path::new(&arg);
+                    if path.is_absolute() {
+                        arg
+                    } else {
+                        std::env::current_dir()
+                            .map(|cwd| cwd.join(&arg).to_string_lossy().to_string())
+                            .unwrap_or(arg)
+                    }
+                })
+                .filter(|path| std::path::Path::new(path).exists())
+                .collect();
+
+            if !cli_files.is_empty() {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let _ = app_handle.emit("open-files", cli_files);
+                });
+            }
+
             // Handle menu events
             app.on_menu_event(move |app, event| {
                 match event.id().as_ref() {
@@ -303,7 +363,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![read_file, write_file, get_file_dir, get_recent_files, add_recent_file, get_session, save_session])
+        .invoke_handler(tauri::generate_handler![read_file, write_file, get_file_dir, open_in_browser, get_recent_files, add_recent_file, get_session, save_session])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -90,13 +90,6 @@ export function injectStyles(doc: Document): void {
     .${EDITOR_CLASS}:focus {
       box-shadow: inset 0 0 0 2px rgba(92, 143, 255, 0.7);
     }
-    /* Hide fixed/sticky elements from loaded content (buttons, navs, etc.) */
-    [style*="position: fixed"],
-    [style*="position:fixed"],
-    [style*="position: sticky"],
-    [style*="position:sticky"] {
-      display: none !important;
-    }
     /* Find & Replace match highlighting */
     mark.hone-find-highlight {
       background: rgba(92, 143, 255, 0.3);
@@ -162,19 +155,44 @@ export function injectStyles(doc: Document): void {
       opacity: 1 !important;
       transform: none !important;
     }
+    /* Iframe placeholder styles */
+    .hone-iframe-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-family: system-ui, sans-serif;
+      border-radius: 8px;
+      text-align: center;
+      padding: 2rem;
+    }
+    .hone-iframe-placeholder .hone-iframe-label {
+      font-size: 0.9rem;
+      opacity: 0.7;
+      margin-bottom: 0.25rem;
+    }
+    .hone-iframe-placeholder .hone-iframe-title {
+      font-size: 1rem;
+      margin-bottom: 0.75rem;
+    }
+    .hone-iframe-open-btn {
+      margin-top: 0.25rem;
+      padding: 0.4rem 1rem;
+      background: rgba(255,255,255,0.12);
+      color: #e0e0e0;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .hone-iframe-open-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
   `;
   doc.head.appendChild(style);
-
-  // Also hide any elements with fixed/sticky position via computed style
-  setTimeout(() => {
-    const allElements = doc.querySelectorAll('*');
-    allElements.forEach((el) => {
-      const style = doc.defaultView?.getComputedStyle(el);
-      if (style && (style.position === 'fixed' || style.position === 'sticky')) {
-        (el as HTMLElement).style.display = 'none';
-      }
-    });
-  }, 100);
 }
 
 export { EDITOR_CLASS, EDITOR_ATTR };
