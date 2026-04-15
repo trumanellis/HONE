@@ -73,8 +73,20 @@
       btn.addEventListener('click', show);
       close.addEventListener('click', hide);
       backdrop.addEventListener('click', hide);
+      const isTyping = (el) => {
+        if (!el) return false;
+        const tag = el.tagName;
+        return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+      };
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !modal.classList.contains('hidden')) hide();
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+          hide();
+          return;
+        }
+        if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target)) {
+          e.preventDefault();
+          modal.classList.contains('hidden') ? show() : hide();
+        }
       });
     </script>
     <script type="module" src="/src/main.ts"></script>
