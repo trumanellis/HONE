@@ -1224,12 +1224,31 @@ async function restoreSession(): Promise<void> {
   }
 }
 
-// Listen for CLI file open events
+// Listen for CLI file open events (second-instance launches)
 listen<string[]>("open-files", async (event) => {
   for (const filePath of event.payload) {
     await loadFile(filePath);
   }
 });
 
-// Call on page load - restore session instead of just recent files
-restoreSession();
+async function openPendingCliFiles(): Promise<boolean> {
+  try {
+    const files = await invoke<string[]>("take_pending_cli_files");
+    if (!files || files.length === 0) return false;
+    for (const filePath of files) {
+      await loadFile(filePath);
+    }
+    return true;
+  } catch (err) {
+    console.error("Failed to read pending CLI files:", err);
+    return false;
+  }
+}
+
+// Call on page load - open CLI-provided files first, otherwise restore session
+(async () => {
+  const opened = await openPendingCliFiles();
+  if (!opened) {
+    await restoreSession();
+  }
+})();

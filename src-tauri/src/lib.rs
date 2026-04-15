@@ -1,8 +1,12 @@
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 use serde::{Deserialize, Serialize};
+
+#[derive(Default)]
+struct PendingCliFiles(Mutex<Vec<String>>);
 
 const MAX_RECENT_FILES: usize = 10;
 const RECENT_FILES_FILENAME: &str = "recent_files.json";
@@ -218,25 +222,35 @@ fn save_session(app: AppHandle, open_files: Vec<String>, active_file: Option<Str
     save_session_data(&app, &data)
 }
 
+#[tauri::command]
+fn take_pending_cli_files(state: State<'_, PendingCliFiles>) -> Vec<String> {
+    let mut guard = state.0.lock().unwrap();
+    std::mem::take(&mut *guard)
+}
+
+fn resolve_cli_files<I: IntoIterator<Item = String>>(args: I, cwd: &Path) -> Vec<String> {
+    args.into_iter()
+        .filter(|arg| !arg.starts_with('-'))
+        .map(|arg| {
+            let path = Path::new(&arg);
+            if path.is_absolute() {
+                arg
+            } else {
+                cwd.join(&arg).to_string_lossy().to_string()
+            }
+        })
+        .filter(|path| Path::new(path).exists())
+        .collect()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(PendingCliFiles::default())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             // Second instance launched - resolve file paths and send to existing window
-            let files: Vec<String> = argv.into_iter()
-                .skip(1)
-                .filter(|arg| !arg.starts_with('-'))
-                .map(|arg| {
-                    let path = std::path::Path::new(&arg);
-                    if path.is_absolute() {
-                        arg
-                    } else {
-                        let cwd_path = std::path::Path::new(&cwd);
-                        cwd_path.join(&arg).to_string_lossy().to_string()
-                    }
-                })
-                .filter(|path| std::path::Path::new(path).exists())
-                .collect();
+            let cwd_path = std::path::PathBuf::from(&cwd);
+            let files = resolve_cli_files(argv.into_iter().skip(1), &cwd_path);
 
             if !files.is_empty() {
                 let _ = app.emit("open-files", files);
@@ -314,29 +328,14 @@ pub fn run() {
 
             app.set_menu(menu)?;
 
-            // Handle initial CLI file arguments - emit after webview is ready
-            let cli_files: Vec<String> = std::env::args()
-                .skip(1)
-                .filter(|arg| !arg.starts_with('-'))
-                .map(|arg| {
-                    let path = std::path::Path::new(&arg);
-                    if path.is_absolute() {
-                        arg
-                    } else {
-                        std::env::current_dir()
-                            .map(|cwd| cwd.join(&arg).to_string_lossy().to_string())
-                            .unwrap_or(arg)
-                    }
-                })
-                .filter(|path| std::path::Path::new(path).exists())
-                .collect();
+            // Handle initial CLI file arguments - stash for the frontend to pull
+            // on startup (avoids race with webview/listener initialization).
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let cli_files = resolve_cli_files(std::env::args().skip(1), &cwd);
 
             if !cli_files.is_empty() {
-                let app_handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                    let _ = app_handle.emit("open-files", cli_files);
-                });
+                let state: State<'_, PendingCliFiles> = app.state();
+                state.0.lock().unwrap().extend(cli_files);
             }
 
             // Handle menu events
@@ -363,7 +362,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![read_file, write_file, get_file_dir, open_in_browser, get_recent_files, add_recent_file, get_session, save_session])
+        .invoke_handler(tauri::generate_handler![read_file, write_file, get_file_dir, open_in_browser, get_recent_files, add_recent_file, get_session, save_session, take_pending_cli_files])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
