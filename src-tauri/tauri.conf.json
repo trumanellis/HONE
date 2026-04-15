@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "HONE2",
+        "title": "HONE",
         "width": 1200,
         "height": 800,
         "resizable": true,
