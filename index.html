@@ -38,6 +38,45 @@
       </div>
     </div>
     <div id="toast"></div>
+    <button id="help-button" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">?</button>
+    <div id="help-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <div class="help-modal-backdrop"></div>
+      <div class="help-modal-content">
+        <button class="help-modal-close" type="button" aria-label="Close">&times;</button>
+        <h2 id="help-title">Keyboard Shortcuts</h2>
+        <dl class="help-shortcuts">
+          <dt><kbd>⌘O</kbd></dt><dd>Open file</dd>
+          <dt><kbd>⌘S</kbd></dt><dd>Save</dd>
+          <dt><kbd>⌘⇧S</kbd></dt><dd>Save as</dd>
+          <dt><kbd>⌘W</kbd></dt><dd>Close tab</dd>
+          <dt><kbd>⌘R</kbd></dt><dd>Reload current file</dd>
+          <dt><kbd>⌘B</kbd></dt><dd>Bold</dd>
+          <dt><kbd>⌘I</kbd></dt><dd>Italic</dd>
+          <dt><kbd>⌘U</kbd></dt><dd>Underline</dd>
+          <dt><kbd>⌘Z</kbd></dt><dd>Undo</dd>
+          <dt><kbd>⌘⇧Z</kbd></dt><dd>Redo</dd>
+          <dt><kbd>⌘F</kbd></dt><dd>Find</dd>
+          <dt><kbd>⌘H</kbd></dt><dd>Find &amp; replace</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close dialogs</dd>
+          <dt><kbd>drag</kbd></dt><dd>Drop files to open</dd>
+          <dt><kbd>right-click</kbd></dt><dd>Delete, edit links, convert blocks</dd>
+        </dl>
+      </div>
+    </div>
+    <script type="module">
+      const btn = document.getElementById('help-button');
+      const modal = document.getElementById('help-modal');
+      const close = modal.querySelector('.help-modal-close');
+      const backdrop = modal.querySelector('.help-modal-backdrop');
+      const show = () => modal.classList.remove('hidden');
+      const hide = () => modal.classList.add('hidden');
+      btn.addEventListener('click', show);
+      close.addEventListener('click', hide);
+      backdrop.addEventListener('click', hide);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) hide();
+      });
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
