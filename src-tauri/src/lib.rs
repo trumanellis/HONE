@@ -363,6 +363,28 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![read_file, write_file, get_file_dir, open_in_browser, get_recent_files, add_recent_file, get_session, save_session, take_pending_cli_files])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // macOS file-association handler: when the user double-clicks a .md/.html
+            // file in Finder, Tauri emits RunEvent::Opened. Re-emit as the same
+            // "open-files" event the second-instance handler uses, so the frontend
+            // has a single listener for both paths.
+            if let tauri::RunEvent::Opened { urls } = event {
+                let files: Vec<String> = urls
+                    .into_iter()
+                    .filter_map(|u| u.to_file_path().ok())
+                    .filter(|p| p.exists())
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+
+                if !files.is_empty() {
+                    let handle = app_handle.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        let _ = handle.emit("open-files", files);
+                    });
+                }
+            }
+        });
 }

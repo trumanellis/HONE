@@ -8,9 +8,38 @@
 
 html, body {
   height: 100%;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-weight: 300;
   background: var(--color-void);
-  color: var(--color-blade);
+  color: var(--color-polish);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dot-grid texture — a single page-level atmospheric layer */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    radial-gradient(
+      ellipse 80% 60% at 50% 35%,
+      rgba(129, 140, 248, 0.05) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      circle,
+      rgba(129, 140, 248, 0.08) 1px,
+      transparent 1px
+    );
+  background-size: auto, 24px 24px;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
 }
 
 #app {
@@ -22,13 +51,29 @@ html, body {
 
 /* Toolbar */
 #toolbar {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  gap: 2px;
+  padding: 10px 14px;
   background: var(--color-obsidian);
   border-bottom: 1px solid var(--color-edge);
   flex-shrink: 0;
+  height: 44px;
+  box-sizing: border-box;
+}
+
+/* Gradient hairline along the bottom of the toolbar — DESIGN.md "gradient top edge" */
+#toolbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  pointer-events: none;
+  background: var(--gradient-edge);
+  opacity: 0.6;
 }
 
 /* Main content area with sidebar */
@@ -42,9 +87,9 @@ html, body {
 #tab-bar-container {
   display: none; /* Hidden by default, shown when files are open */
   flex-direction: column;
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
   flex-shrink: 0;
   flex-grow: 0;
   background: var(--color-obsidian);
@@ -56,25 +101,32 @@ html, body {
 .sidebar-header {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  gap: 10px;
+  padding: 0 16px;
+  height: 44px;
   border-bottom: 1px solid var(--color-edge);
   flex-shrink: 0;
-}
-
-.sidebar-logo {
-  width: 24px;
-  height: 24px;
-  opacity: 0.9;
+  box-sizing: border-box;
 }
 
 .sidebar-title {
   font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-size: 11px;
   font-weight: 600;
-  color: var(--color-polish);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
+  background: var(--gradient-signature);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+.sidebar-logo {
+  width: 20px;
+  height: 20px;
+  opacity: 0.92;
+  filter: drop-shadow(0 0 8px rgba(129, 140, 248, 0.25));
 }
 
 .tab-bar {
@@ -101,50 +153,83 @@ html, body {
 .tab {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--color-edge);
+  gap: 10px;
+  padding: 10px 14px 10px 12px;
   background: transparent;
-  color: var(--color-worn);
+  color: var(--color-polish);
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: -0.005em;
   transition: background var(--duration-fast) var(--ease-out),
               color var(--duration-fast) var(--ease-out);
   position: relative;
+  border-left: 2px solid transparent;
 }
 
 .tab:hover {
-  background: rgba(255, 255, 255, 0.02);
-  color: var(--color-polish);
+  background: var(--color-hover);
+  color: var(--color-blade);
 }
 
 .tab.active {
-  background: var(--color-steel);
+  background: rgba(129, 140, 248, 0.08);
   color: var(--color-blade);
-  border-left: 2px solid var(--color-hone-blue);
+  border-left-color: var(--color-indigo);
+  box-shadow: inset 8px 0 24px -8px rgba(129, 140, 248, 0.18);
+}
+
+.tab.active::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-indigo);
+  box-shadow: 0 0 12px rgba(129, 140, 248, 0.7),
+              0 0 24px rgba(192, 132, 252, 0.35);
+  pointer-events: none;
+}
+
+.tab.active .tab-badge.markdown {
+  background: rgba(129, 140, 248, 0.2);
+  color: #c7c9ff;
+  box-shadow: 0 0 12px rgba(129, 140, 248, 0.25);
+}
+
+.tab.dirty .tab-unsaved {
+  color: var(--color-amber);
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.7);
+  animation: hone-pulse 2s ease-in-out infinite;
+}
+
+@keyframes hone-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .tab-badge {
-  padding: 2px 4px;
+  padding: 1px 5px;
   border-radius: var(--radius-sm);
-  font-size: var(--text-caption);
+  font-size: 9.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   flex-shrink: 0;
+  font-family: var(--font-mono);
+  line-height: 1.4;
 }
 
 .tab-badge.html {
-  background: var(--color-steel);
-  color: var(--color-polish);
-  border: 1px solid var(--color-edge);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-worn);
 }
 
 .tab-badge.markdown {
-  background: rgba(88, 166, 255, 0.15);
-  color: #58a6ff;
-  border: 1px solid rgba(88, 166, 255, 0.3);
+  background: rgba(92, 143, 255, 0.12);
+  color: var(--color-hone-blue);
 }
 
 .tab-filename {
@@ -191,74 +276,85 @@ html, body {
   color: var(--color-blade);
 }
 
-#toolbar button {
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--color-edge);
+#toolbar .tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border: none;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-polish);
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.02em;
-  text-transform: lowercase;
-  transition: all var(--duration-micro) var(--ease-out);
+  letter-spacing: -0.005em;
+  transition:
+    background var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
 }
 
-#toolbar button:hover {
-  border-color: var(--color-blade);
+#toolbar .tb-btn:hover {
+  background: rgba(129, 140, 248, 0.08);
   color: var(--color-blade);
+  text-shadow: 0 0 8px rgba(129, 140, 248, 0.4);
 }
 
-#toolbar button:active {
-  background: var(--color-steel);
+#toolbar .tb-btn:hover .tb-icon {
+  filter: drop-shadow(0 0 6px rgba(129, 140, 248, 0.55));
+  color: var(--color-indigo);
 }
 
-#toolbar button .btn-icon {
-  font-size: 12px;
-  margin-right: 2px;
+#toolbar .tb-btn:active {
+  background: rgba(129, 140, 248, 0.14);
+}
+
+#toolbar .tb-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+}
+
+#toolbar .tb-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+#toolbar .tb-label {
+  line-height: 1;
 }
 
 #toolbar .toolbar-separator {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: var(--color-edge);
-  margin: 0 var(--space-xs);
+  margin: 0 6px;
 }
-
-/* Primary button variant */
-#toolbar button.primary {
-  background: var(--color-blade);
-  color: var(--color-void);
-  border: none;
-}
-
-#toolbar button.primary:hover {
-  background: var(--color-spark);
-  box-shadow: var(--shadow-glow);
-}
-
-/* File type badge removed from toolbar - shown in sidebar tabs instead */
 
 #toolbar .filename {
   margin-left: auto;
-  font-size: var(--text-label);
+  font-size: 12px;
   color: var(--color-worn);
   font-family: var(--font-mono);
+  letter-spacing: 0.01em;
 }
 
 #toolbar .filename.unsaved::after {
-  content: " *";
+  content: " ●";
   color: var(--color-caution);
+  font-size: 10px;
+  margin-left: 2px;
 }
 
-/* Editor container */
+/* Editor container — transparent so the dot-grid shows behind the welcome hero */
 #editor-container {
   position: relative;
   flex: 1;
   overflow: hidden;
-  background: var(--color-void);
+  background: transparent;
 }
 
 /* Hide sidebar when no tabs */
@@ -266,7 +362,7 @@ html, body {
   display: none;
 }
 
-/* Welcome screen */
+/* Welcome screen — DESIGN.md hero treatment */
 #welcome {
   display: flex;
   flex-direction: column;
@@ -274,58 +370,116 @@ html, body {
   justify-content: center;
   position: absolute;
   inset: 0;
-  color: var(--color-worn);
   text-align: center;
-  padding: var(--space-xl);
+  padding: 64px 48px;
   overflow-y: auto;
 }
 
-#welcome .logo {
-  width: 120px;
-  height: 120px;
-  margin-bottom: var(--space-lg);
-  opacity: 0.9;
-  transition: opacity var(--duration-normal) var(--ease-out);
+#welcome .hero-glow {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 600px;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(129, 140, 248, 0.06) 0%,
+    rgba(192, 132, 252, 0.03) 40%,
+    transparent 70%
+  );
+  z-index: 0;
 }
 
-#welcome .logo:hover {
-  opacity: 1;
+#welcome .hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#welcome .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-indigo);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+
+#welcome .hero-title {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: clamp(56px, 8vw, 88px);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  margin-bottom: 18px;
+}
+
+#welcome .gradient-text {
+  background: var(--gradient-signature);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
 }
 
 #welcome .tagline {
-  font-family: var(--font-mono);
-  font-size: var(--text-body);
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 300;
   color: var(--color-polish);
-  letter-spacing: 0.02em;
-  margin-bottom: var(--space-sm);
+  letter-spacing: -0.005em;
+  max-width: 480px;
+  line-height: 1.5;
+  margin-bottom: 8px;
 }
 
 #welcome .hint {
-  font-size: var(--text-label);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
   color: var(--color-worn);
-  margin-bottom: var(--space-md);
+  margin-bottom: 48px;
 }
 
 #welcome kbd {
-  background: var(--color-steel);
-  padding: 2px 6px;
+  display: inline-block;
+  background: var(--color-obsidian);
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-edge);
   font-family: var(--font-mono);
-  font-size: var(--text-caption);
+  font-size: 10.5px;
+  font-weight: 500;
   color: var(--color-polish);
+  margin-right: 6px;
+  letter-spacing: 0.01em;
 }
 
 #welcome .shortcuts {
-  margin-top: var(--space-lg);
-  font-size: var(--text-label);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
   color: var(--color-worn);
 }
 
-#welcome .shortcuts p {
-  margin: var(--space-xs) 0;
-  color: var(--color-worn);
+#welcome .shortcut-row {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+}
+
+#welcome .shortcut {
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 0.01em;
 }
 
 /* Content frame */
@@ -335,6 +489,427 @@ html, body {
   height: 100%;
   border: none;
   background: var(--color-void);
+}
+
+/* =========================================================================
+   Milkdown reading & editing surface
+   Goal: a single instrument — HONE's tokens applied to Crepe's editor.
+   ========================================================================= */
+
+.milkdown-tab-root {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  background: var(--color-void);
+}
+
+.milkdown-tab-root::-webkit-scrollbar {
+  width: 8px;
+}
+.milkdown-tab-root::-webkit-scrollbar-track {
+  background: transparent;
+}
+.milkdown-tab-root::-webkit-scrollbar-thumb {
+  background: var(--color-edge);
+  border-radius: 4px;
+  border: 2px solid var(--color-void);
+}
+.milkdown-tab-root::-webkit-scrollbar-thumb:hover {
+  background: var(--color-worn);
+}
+
+/* Map Crepe's design tokens onto HONE's */
+.milkdown-tab-root .milkdown {
+  height: 100%;
+  background: var(--color-void) !important;
+  color: var(--color-blade);
+  --crepe-color-background: var(--color-void);
+  --crepe-color-on-background: var(--color-blade);
+  --crepe-color-surface: var(--color-obsidian);
+  --crepe-color-surface-low: var(--color-steel);
+  --crepe-color-on-surface: var(--color-blade);
+  --crepe-color-on-surface-variant: var(--color-polish);
+  --crepe-color-outline: var(--color-edge);
+  --crepe-color-primary: var(--color-hone-blue);
+  --crepe-color-secondary: var(--color-edge);
+  --crepe-color-on-secondary: var(--color-blade);
+  --crepe-color-hover: rgba(255, 255, 255, 0.04);
+  --crepe-color-selected: rgba(92, 143, 255, 0.18);
+  --crepe-color-inline-area: var(--color-steel);
+  --crepe-color-inline-code: var(--color-hone-blue);
+  --crepe-color-inverse: var(--color-blade);
+  --crepe-color-on-inverse: var(--color-void);
+  --crepe-color-error: var(--color-forge);
+  --crepe-shadow-1: var(--shadow-md);
+  --crepe-shadow-2: var(--shadow-lg);
+  --crepe-font-title: var(--font-sans);
+  --crepe-font-default: var(--font-sans);
+  --crepe-font-code: var(--font-mono);
+}
+
+/* The reading column — Inter 15 / 300 / 1.7 per DESIGN.md */
+.milkdown-tab-root .ProseMirror {
+  min-height: 100%;
+  padding: 96px 72px 200px !important;
+  max-width: 760px;
+  margin: 0 auto;
+  outline: none;
+  caret-color: var(--color-indigo);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.7;
+  color: var(--color-polish);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Suppress the virtual text cursor when the editor isn't focused. */
+.milkdown-tab-root .ProseMirror:not(.ProseMirror-focused)
+  .prosemirror-virtual-cursor {
+  display: none;
+}
+
+/* ---------- Block rhythm ---------- */
+.milkdown-tab-root .ProseMirror > * + * {
+  margin-top: 1.3em;
+}
+
+.milkdown-tab-root .ProseMirror p {
+  margin: 0;
+  color: var(--color-polish);
+  font-weight: 300;
+}
+
+/* ---------- Headings (DESIGN.md scale) ---------- */
+.milkdown-tab-root .ProseMirror h1,
+.milkdown-tab-root .ProseMirror h2,
+.milkdown-tab-root .ProseMirror h3,
+.milkdown-tab-root .ProseMirror h4,
+.milkdown-tab-root .ProseMirror h5,
+.milkdown-tab-root .ProseMirror h6 {
+  font-family: var(--font-sans);
+  color: var(--color-blade);
+  line-height: 1.2;
+}
+
+.milkdown-tab-root .ProseMirror h1 {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  margin-top: 0.6em !important;
+  margin-bottom: 0.15em;
+  /* Signature gradient text — DESIGN.md hero emphasis */
+  background: var(--gradient-signature);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+  width: fit-content;
+}
+.milkdown-tab-root .ProseMirror h1:first-child {
+  margin-top: 0 !important;
+}
+
+.milkdown-tab-root .ProseMirror h2 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-top: 0.8em !important;
+  padding-top: 0.4em;
+  line-height: 1.3;
+  position: relative;
+}
+.milkdown-tab-root .ProseMirror h2::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--gradient-edge);
+  opacity: 0.8;
+}
+
+.milkdown-tab-root .ProseMirror h3 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 1.8em !important;
+  line-height: 1.4;
+}
+
+.milkdown-tab-root .ProseMirror h4,
+.milkdown-tab-root .ProseMirror h5,
+.milkdown-tab-root .ProseMirror h6 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-worn);
+  margin-top: 1.6em !important;
+}
+
+/* ---------- Inline text ---------- */
+.milkdown-tab-root .ProseMirror strong {
+  color: var(--color-blade);
+  font-weight: 600;
+}
+
+.milkdown-tab-root .ProseMirror em {
+  color: var(--color-polish);
+  font-style: italic;
+}
+
+.milkdown-tab-root .ProseMirror a,
+.milkdown-tab-root .ProseMirror a span {
+  color: var(--color-indigo) !important;
+  text-decoration: none;
+  background-image: var(--gradient-signature);
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  padding-bottom: 1px;
+  transition:
+    text-shadow var(--duration-fast) var(--ease-out),
+    background-size var(--duration-fast) var(--ease-out);
+}
+.milkdown-tab-root .ProseMirror a:hover {
+  text-shadow: 0 0 12px rgba(129, 140, 248, 0.5);
+  background-size: 100% 2px;
+}
+
+/* ---------- Inline code ---------- */
+.milkdown-tab-root .ProseMirror code,
+.milkdown-tab-root .ProseMirror code * {
+  font-family: var(--font-mono) !important;
+  font-size: 0.86em !important;
+  background: var(--color-steel) !important;
+  color: var(--color-indigo) !important;
+  padding: 1px 6px !important;
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid rgba(129, 140, 248, 0.18);
+  font-weight: 400 !important;
+  text-shadow: 0 0 8px rgba(129, 140, 248, 0.35);
+}
+
+.milkdown-tab-root .ProseMirror pre code,
+.milkdown-tab-root .ProseMirror .milkdown-code-block code,
+.milkdown-tab-root .ProseMirror .milkdown-code-block code * {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  color: var(--color-blade) !important;
+}
+
+/* ---------- Code blocks ---------- */
+.milkdown-tab-root .ProseMirror .milkdown-code-block {
+  background: var(--color-obsidian);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-lg);
+  margin: 1.5em 0;
+  overflow: hidden;
+}
+
+.milkdown-tab-root .ProseMirror .milkdown-code-block .cm-editor {
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 14px 18px;
+}
+
+.milkdown-tab-root .ProseMirror .milkdown-code-block .cm-gutters {
+  background: transparent;
+  border-right: 1px solid var(--color-edge);
+  color: var(--color-worn);
+}
+
+.milkdown-tab-root .ProseMirror .milkdown-code-block .cm-activeLineGutter,
+.milkdown-tab-root .ProseMirror .milkdown-code-block .cm-activeLine {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* ---------- Blockquotes — left rail in indigo, stage-tinted background ---------- */
+.milkdown-tab-root .ProseMirror blockquote {
+  position: relative;
+  padding: 16px 20px !important;
+  margin: 1.5em 0;
+  color: var(--color-polish);
+  background: rgba(129, 140, 248, 0.04);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  border-left: 3px solid var(--color-indigo) !important;
+}
+
+.milkdown-tab-root .ProseMirror blockquote::before {
+  display: none !important;
+}
+
+.milkdown-tab-root .ProseMirror blockquote p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--color-polish);
+}
+
+/* ---------- Lists ---------- */
+.milkdown-tab-root .ProseMirror ul,
+.milkdown-tab-root .ProseMirror ol {
+  padding-left: 1.5em;
+}
+
+.milkdown-tab-root .ProseMirror li {
+  margin: 0.3em 0;
+}
+
+.milkdown-tab-root .ProseMirror li::marker {
+  color: var(--color-worn);
+}
+
+/* ---------- Horizontal rule — signature gradient ---------- */
+.milkdown-tab-root .ProseMirror hr {
+  background: var(--gradient-edge) !important;
+  background-color: transparent !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: 2.5em 0 !important;
+  border: none;
+  opacity: 0.9;
+}
+
+/* ---------- Images ---------- */
+.milkdown-tab-root .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  display: block;
+  margin: 1.25em auto;
+}
+
+.milkdown-tab-root .ProseMirror figure {
+  margin: 1.5em 0;
+}
+
+.milkdown-tab-root .ProseMirror figure img {
+  margin: 0 auto 0.6em;
+}
+
+.milkdown-tab-root .ProseMirror figcaption {
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-worn);
+  font-style: italic;
+  line-height: 1.6;
+}
+
+.milkdown-tab-root .ProseMirror .milkdown-image-block {
+  margin: 1.5em 0 !important;
+}
+
+.milkdown-tab-root .ProseMirror .milkdown-image-block img {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md), 0 0 40px rgba(129, 140, 248, 0.06);
+  margin: 0 auto;
+}
+
+/* Block-level rhythm: tighter when adjacent to text */
+.milkdown-tab-root .ProseMirror > .milkdown-image-block + *,
+.milkdown-tab-root .ProseMirror > * + .milkdown-image-block,
+.milkdown-tab-root .ProseMirror > figure + *,
+.milkdown-tab-root .ProseMirror > * + figure {
+  margin-top: 1em;
+}
+
+/* ---------- Tables ---------- */
+.milkdown-tab-root .ProseMirror .milkdown-table-block,
+.milkdown-tab-root .ProseMirror table {
+  margin: 1.5em 0;
+  font-size: 14px;
+}
+
+.milkdown-tab-root .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.milkdown-tab-root .ProseMirror th,
+.milkdown-tab-root .ProseMirror td {
+  border: 1px solid var(--color-edge);
+  padding: 8px 14px;
+  text-align: left;
+}
+
+.milkdown-tab-root .ProseMirror th {
+  background: var(--color-obsidian);
+  color: var(--color-spark);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.milkdown-tab-root .ProseMirror tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* ---------- Selection ---------- */
+.milkdown-tab-root .ProseMirror ::selection,
+.milkdown-tab-root .ProseMirror *::selection {
+  background: rgba(129, 140, 248, 0.38);
+  color: var(--color-spark);
+  text-shadow: 0 0 6px rgba(192, 132, 252, 0.5);
+}
+
+/* Caret glow: pair the indigo caret-color with a soft halo via the virtual cursor */
+.milkdown-tab-root .ProseMirror.ProseMirror-focused .prosemirror-virtual-cursor {
+  --prosemirror-virtual-cursor-color: var(--color-indigo);
+  box-shadow: 0 0 12px rgba(129, 140, 248, 0.7);
+  border-left-width: 2px !important;
+}
+
+/* ---------- Block-edit handles (the + and :: in the left gutter) ---------- */
+.milkdown-tab-root .milkdown-block-handle {
+  color: var(--color-worn);
+}
+.milkdown-tab-root .milkdown-block-handle .operation-item:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+.milkdown-tab-root .milkdown-block-handle .operation-item svg {
+  fill: var(--color-worn) !important;
+  transition: fill var(--duration-fast) var(--ease-out);
+}
+.milkdown-tab-root .milkdown-block-handle .operation-item:hover svg {
+  fill: var(--color-blade) !important;
+}
+
+/* ---------- Slash menu, toolbar, link tooltip ---------- */
+.milkdown-tab-root .milkdown-slash-menu,
+.milkdown-tab-root .milkdown-toolbar,
+.milkdown-tab-root .milkdown-link-preview,
+.milkdown-tab-root .milkdown-link-edit {
+  background: var(--color-obsidian) !important;
+  border: 1px solid var(--color-edge) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-lg) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 12px;
+  color: var(--color-blade);
+}
+
+.milkdown-tab-root .milkdown-slash-menu ul li:hover,
+.milkdown-tab-root .milkdown-slash-menu .menu-groups .menu-group ul li:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+.milkdown-tab-root .milkdown-slash-menu ul li.hover,
+.milkdown-tab-root .milkdown-slash-menu .menu-groups .menu-group ul li.hover {
+  background: rgba(92, 143, 255, 0.14) !important;
+}
+
+/* ---------- Placeholder ---------- */
+.milkdown-tab-root .crepe-placeholder::before {
+  color: var(--color-worn) !important;
+  font-style: normal;
 }
 
 /* Editor surface wrapper */
@@ -348,20 +923,25 @@ html, body {
 /* Toast notification */
 #toast {
   position: fixed;
-  bottom: var(--space-lg);
+  bottom: 24px;
   left: 50%;
-  transform: translateX(-50%) translateY(100px);
-  background: var(--color-temper);
-  color: var(--color-void);
-  padding: var(--space-sm) var(--space-lg);
-  border-radius: var(--radius-lg);
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(20, 20, 20, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-edge);
+  color: var(--color-blade);
+  padding: 8px 18px;
+  border-radius: 999px;
   font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-size: 12px;
   font-weight: 500;
-  box-shadow: var(--shadow-md);
+  letter-spacing: 0.01em;
+  box-shadow: var(--shadow-lg);
   opacity: 0;
-  transition: transform var(--duration-normal) var(--ease-in-out),
-              opacity var(--duration-normal) var(--ease-in-out);
+  pointer-events: none;
+  transition: transform var(--duration-normal) var(--ease-out),
+              opacity var(--duration-normal) var(--ease-out);
   z-index: 1000;
 }
 
@@ -371,28 +951,31 @@ html, body {
 }
 
 #toast.error {
-  background: var(--color-forge);
+  border-color: var(--color-forge);
+  color: var(--color-forge);
 }
 
 #toast.warning {
-  background: var(--color-caution);
-  color: var(--color-void);
+  border-color: var(--color-caution);
+  color: var(--color-caution);
 }
 
 /* Find & Replace Bar */
 .find-replace-bar {
   display: none;
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: 14px;
+  right: 18px;
   flex-direction: column;
-  background: var(--color-steel);
-  border-bottom: 1px solid var(--color-edge);
-  padding: var(--space-sm);
-  gap: var(--space-sm);
+  background: rgba(20, 20, 20, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+  gap: 6px;
   z-index: 100;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
 }
 
 .find-replace-row,
@@ -507,26 +1090,30 @@ iframe mark.hone-find-highlight.current {
 
 /* Recent Files Section */
 #welcome .recent-files {
-  margin-top: var(--space-xl);
+  margin-top: 44px;
   width: 100%;
-  max-width: 400px;
+  max-width: 380px;
 }
 
 #welcome .recent-files h3 {
   font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-size: 10.5px;
   font-weight: 600;
-  color: var(--color-polish);
-  text-transform: lowercase;
-  letter-spacing: 0.05em;
-  margin-bottom: var(--space-md);
+  color: var(--color-worn);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 12px;
   text-align: left;
+  padding-left: 12px;
 }
 
 #welcome .recent-files-list {
   list-style: none;
   padding: 0;
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 #welcome .recent-files-list li {
@@ -538,21 +1125,22 @@ iframe mark.hone-find-highlight.current {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  padding: var(--space-sm) var(--space-md);
+  padding: 8px 12px;
   text-decoration: none;
   border-radius: var(--radius-md);
   transition: background var(--duration-fast) var(--ease-out);
 }
 
 #welcome .recent-file-item:hover {
-  background: var(--color-steel);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 #welcome .recent-file-name {
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-weight: 500;
   color: var(--color-polish);
+  letter-spacing: -0.005em;
 }
 
 #welcome .recent-file-item:hover .recent-file-name {
@@ -561,7 +1149,7 @@ iframe mark.hone-find-highlight.current {
 
 #welcome .recent-file-path {
   font-family: var(--font-mono);
-  font-size: var(--text-caption);
+  font-size: 10.5px;
   color: var(--color-worn);
   overflow: hidden;
   text-overflow: ellipsis;

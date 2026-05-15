@@ -3,6 +3,7 @@ import type { EditableRegion } from "./html-parser";
 import type { FrontmatterData } from "../types/editor";
 import type { UndoManager } from "../undo/UndoManager";
 import type { TextEditTracker } from "../undo/TextEditTracker";
+import type { MilkdownEditor } from "./milkdown-editor";
 
 export interface TabState {
   id: string;
@@ -10,18 +11,23 @@ export interface TabState {
   filename: string;
   isDirty: boolean;
   fileType: FileType;
-  // Content state
+  // Common
+  dirPath: string;
+  // HTML pipeline state
   contentFrame: HTMLIFrameElement | null;
   originalDoctype: string;
-  originalMarkdown: string | null;
-  frontmatter: FrontmatterData | null;
   originalHtml: string | null;
   regions: EditableRegion[];
   scriptMap: Map<string, string>;
   iframeSrcMap: Map<string, { src: string; original: string }>;
-  // Undo system
   undoManager: UndoManager | null;
   textEditTracker: TextEditTracker | null;
+  // Markdown pipeline state (Milkdown)
+  milkdownEditor: MilkdownEditor | null;
+  milkdownContainer: HTMLDivElement | null;
+  originalMarkdown: string | null;
+  frontmatter: FrontmatterData | null;
+  imageReverseMap: Map<string, string>;
 }
 
 export interface TabBarCallbacks {

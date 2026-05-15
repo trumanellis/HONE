@@ -34,94 +34,89 @@ import {
   extractDoctype,
   surgicalReplace,
   syncRegionsFromDom,
-  type EditableRegion,
 } from "./editor/html-parser";
 import {
-  parseMarkdown,
-  serializeToMarkdown,
   extractFrontmatter,
   stringifyWithFrontmatter,
-  getMarkdownStyles,
 } from "./editor/markdown";
-import type { FileType, FrontmatterData } from "./types/editor";
+import {
+  MilkdownEditor,
+  preprocessImages,
+  postprocessImages,
+} from "./editor/milkdown-editor";
+import type { FileType } from "./types/editor";
 
-// Recent files interface matching Rust struct
 interface RecentFile {
   path: string;
   name: string;
   accessed_at: number;
 }
 
-// Session state interface matching Rust struct
 interface SessionData {
   open_files: string[];
   active_file: string | null;
 }
 
-// Initialize tab bar
 const tabBarContainer = document.getElementById("tab-bar-container")!;
 let tabBar: TabBar;
 let contextMenu: ContextMenu;
 let imageOverlayManager: ImageOverlayManager;
 
-// Helper to get active tab state
 function getActiveTab(): TabState | null {
   const activeId = tabBar.getActiveTabId();
   return activeId ? tabBar.getTab(activeId) : null;
 }
 
 function detectFileType(path: string): FileType {
-  const ext = path.split('.').pop()?.toLowerCase();
-  return (ext === 'md' || ext === 'markdown') ? 'markdown' : 'html';
+  const ext = path.split(".").pop()?.toLowerCase();
+  return ext === "md" || ext === "markdown" ? "markdown" : "html";
 }
 
-// Transform images in the live DOM to use Tauri asset protocol for display
+// Transform images in the live DOM to use Tauri asset protocol for display.
+// Used for HTML files; markdown files go through preprocessImages instead.
 function transformImagesForDisplay(doc: Document, dirPath: string): void {
-  const images = doc.querySelectorAll('img');
-
+  const images = doc.querySelectorAll("img");
   images.forEach((img) => {
-    const src = img.getAttribute('src');
-    if (!src || src.startsWith('data:') || src.startsWith('http://') ||
-        src.startsWith('https://') || src.startsWith('asset:')) {
+    const src = img.getAttribute("src");
+    if (
+      !src ||
+      src.startsWith("data:") ||
+      src.startsWith("http://") ||
+      src.startsWith("https://") ||
+      src.startsWith("asset:")
+    ) {
       return;
     }
-
-    // Convert to asset URL for display
     let absolutePath: string;
-    if (src.startsWith('/')) {
+    if (src.startsWith("/")) {
       absolutePath = src;
-    } else if (src.startsWith('file://')) {
-      absolutePath = src.replace('file://', '');
+    } else if (src.startsWith("file://")) {
+      absolutePath = src.replace("file://", "");
     } else {
       absolutePath = `${dirPath}/${src}`;
     }
-    img.setAttribute('src', convertFileSrc(absolutePath));
+    img.setAttribute("src", convertFileSrc(absolutePath));
   });
 }
 
-// Toast notification
 const toast = document.getElementById("toast")!;
 let toastTimeout: number | null = null;
 
 function showToast(message: string): void {
   toast.textContent = message;
   toast.classList.add("show");
-
-  if (toastTimeout) {
-    clearTimeout(toastTimeout);
-  }
-
+  if (toastTimeout) clearTimeout(toastTimeout);
   toastTimeout = window.setTimeout(() => {
     toast.classList.remove("show");
     toastTimeout = null;
   }, 2000);
 }
 
-// Undo/Redo handlers
 function handleUndo(): void {
   const tab = getActiveTab();
-  if (tab?.undoManager?.canUndo()) {
-    // Flush any pending text edits before undo
+  if (!tab) return;
+  if (tab.fileType === "markdown") return; // Milkdown handles undo natively
+  if (tab.undoManager?.canUndo()) {
     tab.textEditTracker?.flush();
     tab.undoManager.undo();
     markDirty();
@@ -130,45 +125,36 @@ function handleUndo(): void {
 
 function handleRedo(): void {
   const tab = getActiveTab();
-  if (tab?.undoManager?.canRedo()) {
+  if (!tab) return;
+  if (tab.fileType === "markdown") return;
+  if (tab.undoManager?.canRedo()) {
     tab.undoManager.redo();
     markDirty();
   }
 }
 
-// Refresh/reload current file from disk
 async function handleRefresh(): Promise<void> {
   const tab = getActiveTab();
   if (!tab?.currentPath) return;
 
-  // Warn about unsaved changes
   if (tab.isDirty) {
-    const shouldRefresh = confirm(`"${tab.filename}" has unsaved changes. Reload anyway?`);
+    const shouldRefresh = confirm(
+      `"${tab.filename}" has unsaved changes. Reload anyway?`
+    );
     if (!shouldRefresh) return;
   }
 
   const path = tab.currentPath;
   const tabId = tab.id;
 
-  // Close the current tab and reload the file
-  // Remove iframe
-  if (tab.contentFrame) {
-    tab.contentFrame.remove();
-  }
-
-  // Remove tab from tab bar
+  await teardownTab(tab);
   tabBar.removeTab(tabId);
-
-  // Detach image overlay
   imageOverlayManager.detach();
 
-  // Reload the file
   await loadFile(path);
-
   showToast("Refreshed");
 }
 
-// Initialize toolbar
 const toolbarContainer = document.getElementById("toolbar")!;
 const toolbar = createToolbar(toolbarContainer, {
   onOpen: handleOpen,
@@ -178,40 +164,29 @@ const toolbar = createToolbar(toolbarContainer, {
   onRedo: handleRedo,
 });
 
-// Initialize Find & Replace bar
 let findReplaceBar: FindReplaceBar | null = null;
 
 function initializeFindReplaceBar(): void {
   const container = document.getElementById("editor-container")!;
-
-  // Clean up existing instance if any
-  if (findReplaceBar) {
-    findReplaceBar.destroy();
-  }
-
-  // Create new find/replace bar
+  if (findReplaceBar) findReplaceBar.destroy();
   findReplaceBar = createFindReplaceBar(container);
-
-  // Wire up to current iframe
   const tab = getActiveTab();
-  if (tab?.contentFrame) {
-    findReplaceBar.setIframe(tab.contentFrame);
-  }
+  if (tab?.contentFrame) findReplaceBar.setIframe(tab.contentFrame);
 }
 
-function openFindBar(mode: 'find' | 'replace'): void {
+function openFindBar(mode: "find" | "replace"): void {
   const tab = getActiveTab();
-  if (!tab?.contentFrame) return;
-
-  if (!findReplaceBar) {
-    initializeFindReplaceBar();
+  if (!tab) return;
+  if (tab.fileType === "markdown") {
+    showToast("Find & replace not available in markdown mode yet");
+    return;
   }
-
+  if (!tab.contentFrame) return;
+  if (!findReplaceBar) initializeFindReplaceBar();
   findReplaceBar!.setIframe(tab.contentFrame);
   findReplaceBar!.open(mode);
 }
 
-// Mark document as dirty
 function markDirty(): void {
   const tab = getActiveTab();
   if (tab && !tab.isDirty) {
@@ -220,11 +195,9 @@ function markDirty(): void {
   }
 }
 
-// Keyboard shortcut handler
 function handleKeyboardShortcut(e: KeyboardEvent): void {
   const isMod = e.metaKey || e.ctrlKey;
 
-  // Escape key handling (no modifier needed)
   if (e.key === "Escape") {
     if (findReplaceBar?.isOpen()) {
       e.preventDefault();
@@ -237,8 +210,9 @@ function handleKeyboardShortcut(e: KeyboardEvent): void {
   if (!isMod) return;
 
   const key = e.key.toLowerCase();
+  const tab = getActiveTab();
+  const isMarkdown = tab?.fileType === "markdown";
 
-  // File operations - always handle these
   if (key === "o") {
     e.preventDefault();
     e.stopPropagation();
@@ -260,33 +234,29 @@ function handleKeyboardShortcut(e: KeyboardEvent): void {
     return;
   }
 
-  // Find & Replace operations
+  // Find & Replace
   if (key === "f" && !e.shiftKey) {
     e.preventDefault();
     e.stopPropagation();
-    openFindBar('find');
+    openFindBar("find");
     return;
   }
 
   if (key === "h" || (key === "f" && e.shiftKey)) {
     e.preventDefault();
     e.stopPropagation();
-    openFindBar('replace');
+    openFindBar("replace");
     return;
   }
 
-  // Close tab with Cmd+W
   if (key === "w") {
     e.preventDefault();
     e.stopPropagation();
     const activeId = tabBar.getActiveTabId();
-    if (activeId) {
-      closeTab(activeId);
-    }
+    if (activeId) closeTab(activeId);
     return;
   }
 
-  // Refresh/reload current file with Cmd+R
   if (key === "r") {
     e.preventDefault();
     e.stopPropagation();
@@ -294,15 +264,15 @@ function handleKeyboardShortcut(e: KeyboardEvent): void {
     return;
   }
 
-  // Undo/Redo - use our custom UndoManager instead of browser's execCommand
-  if (key === "z" && !e.shiftKey) {
+  // Undo/Redo - HTML tabs only; Milkdown handles these natively via ProseMirror history
+  if (!isMarkdown && key === "z" && !e.shiftKey) {
     e.preventDefault();
     e.stopPropagation();
     handleUndo();
     return;
   }
 
-  if ((key === "z" && e.shiftKey) || key === "y") {
+  if (!isMarkdown && ((key === "z" && e.shiftKey) || key === "y")) {
     e.preventDefault();
     e.stopPropagation();
     handleRedo();
@@ -310,26 +280,20 @@ function handleKeyboardShortcut(e: KeyboardEvent): void {
   }
 }
 
-// Keyboard shortcuts - listen on window to catch all events
 window.addEventListener("keydown", handleKeyboardShortcut, true);
 document.addEventListener("keydown", handleKeyboardShortcut, true);
 
-// Listen for menu events from Tauri
 listen("menu-open", () => handleOpen());
 listen("menu-save", () => handleSave());
 listen("menu-save-as", () => handleSaveAs());
 listen("menu-close-tab", () => {
   const activeId = tabBar.getActiveTabId();
-  if (activeId) {
-    closeTab(activeId);
-  }
+  if (activeId) closeTab(activeId);
 });
 listen("menu-refresh", () => handleRefresh());
 
-// Unsaved changes warning
 window.addEventListener("beforeunload", (e) => {
-  // Check if any tab has unsaved changes
-  const hasUnsavedChanges = tabBar.getAllTabs().some(tab => tab.isDirty);
+  const hasUnsavedChanges = tabBar.getAllTabs().some((tab) => tab.isDirty);
   if (hasUnsavedChanges) {
     e.preventDefault();
     e.returnValue = "";
@@ -345,10 +309,7 @@ async function handleOpen(): Promise<void> {
       { name: "Markdown Files", extensions: ["md", "markdown"] },
     ],
   });
-
-  if (selected) {
-    await loadFile(selected);
-  }
+  if (selected) await loadFile(selected);
 }
 
 async function handleSave(): Promise<void> {
@@ -357,45 +318,68 @@ async function handleSave(): Promise<void> {
     await handleSaveAs();
     return;
   }
-
   await saveToPath(tab.currentPath);
 }
 
 async function handleSaveAs(): Promise<void> {
   const tab = getActiveTab();
-  if (!tab?.contentFrame?.contentDocument) return;
+  if (!tab) return;
 
-  // Show appropriate filters based on source file type
-  const filters = tab.fileType === 'markdown'
-    ? [
-        { name: "Markdown Files", extensions: ["md", "markdown"] },
-        { name: "HTML Files", extensions: ["html", "htm"] },
-      ]
-    : [
-        { name: "HTML Files", extensions: ["html", "htm"] },
-        { name: "Markdown Files", extensions: ["md", "markdown"] },
-      ];
+  const filters =
+    tab.fileType === "markdown"
+      ? [
+          { name: "Markdown Files", extensions: ["md", "markdown"] },
+          { name: "HTML Files", extensions: ["html", "htm"] },
+        ]
+      : [
+          { name: "HTML Files", extensions: ["html", "htm"] },
+          { name: "Markdown Files", extensions: ["md", "markdown"] },
+        ];
 
   const selected = await save({
     filters,
     defaultPath: tab.currentPath || undefined,
   });
 
-  if (selected) {
-    await saveToPath(selected);
-  }
+  if (selected) await saveToPath(selected);
+}
+
+function makeEmptyTabState(
+  path: string,
+  filename: string,
+  fileType: FileType,
+  dirPath: string
+): Omit<TabState, "id"> {
+  return {
+    currentPath: path,
+    filename,
+    isDirty: false,
+    fileType,
+    dirPath,
+    contentFrame: null,
+    originalDoctype: "<!DOCTYPE html>",
+    originalHtml: null,
+    regions: [],
+    scriptMap: new Map(),
+    iframeSrcMap: new Map(),
+    undoManager: null,
+    textEditTracker: null,
+    milkdownEditor: null,
+    milkdownContainer: null,
+    originalMarkdown: null,
+    frontmatter: null,
+    imageReverseMap: new Map(),
+  };
 }
 
 async function loadFile(path: string): Promise<void> {
   try {
-    // Check if file is already open in a tab
     const existingTabId = tabBar.findTabByPath(path);
     if (existingTabId) {
       switchToTab(existingTabId);
       return;
     }
 
-    // Check max tabs
     if (tabBar.hasMaxTabs()) {
       showToast("Maximum 10 tabs open");
       return;
@@ -404,404 +388,342 @@ async function loadFile(path: string): Promise<void> {
     const content: string = await invoke("read_file", { path });
     const dirPath: string = await invoke("get_file_dir", { path });
 
-    // Detect file type
     const fileType = detectFileType(path);
     const filename = path.split(/[/\\]/).pop() || path;
 
-    // Create tab state
-    const tabState = {
-      currentPath: path,
-      filename,
-      isDirty: false,
-      fileType,
-      contentFrame: null as HTMLIFrameElement | null,
-      originalDoctype: "<!DOCTYPE html>",
-      originalMarkdown: null as string | null,
-      frontmatter: null as FrontmatterData | null,
-      originalHtml: null as string | null,
-      regions: [] as EditableRegion[],
-      scriptMap: new Map<string, string>(),
-      iframeSrcMap: new Map<string, { src: string; original: string }>(),
-      undoManager: null as UndoManager | null,
-      textEditTracker: null as TextEditTracker | null,
-    };
+    const tabState = makeEmptyTabState(path, filename, fileType, dirPath);
 
-    let htmlContent: string;
-
-    if (fileType === 'markdown') {
-      // Store original markdown for round-trip
-      tabState.originalMarkdown = content;
-
-      // Extract frontmatter
-      const parsed = extractFrontmatter(content);
-      tabState.frontmatter = parsed.frontmatter;
-
-      // Parse markdown to HTML with Tauri asset protocol for images
-      const bodyHtml = parseMarkdown(parsed.content, (relativePath) => {
-        const absolutePath = `${dirPath}/${relativePath}`;
-        return convertFileSrc(absolutePath);
-      });
-
-      // Wrap in HTML document with markdown styles
-      htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-  <base href="file://${dirPath}/" ${EDITOR_ATTR}="base">
-  <meta charset="utf-8">
-  <style>${getMarkdownStyles()}</style>
-</head>
-<body>
-${bodyHtml}
-</body>
-</html>`;
-      tabState.originalDoctype = "<!DOCTYPE html>";
-    } else {
-      // HTML file - store original and parse editable regions
-      tabState.originalHtml = content;
-      tabState.originalDoctype = extractDoctype(content);
-      tabState.regions = parseEditableRegions(content);
-      htmlContent = content;
-    }
-
-    // Hide all existing iframes
     const container = document.getElementById("editor-container")!;
-    const existingIframes = container.querySelectorAll("iframe");
-    existingIframes.forEach(iframe => {
-      iframe.style.display = "none";
-    });
+    hideAllSurfaces(container);
 
-    const iframe = document.createElement("iframe");
-    iframe.className = "content-frame";
-    // Sandbox blocks scripts; allow-same-origin lets us access contentDocument
-    iframe.setAttribute("sandbox", "allow-same-origin");
-    // Disable autocomplete/autofill features that might add UI elements
-    iframe.setAttribute("autocomplete", "off");
-
-    // Strip scripts and store for restoration (Tauri webview ignores sandbox)
-    let scriptId = 0;
-    let safeHtml = htmlContent.replace(
-      /<script\b[^>]*>[\s\S]*?<\/script>/gi,
-      (match) => {
-        const id = `hone-script-${scriptId++}`;
-        tabState.scriptMap.set(id, match);
-        return `<!--${id}-->`;
-      }
-    );
-
-    // Replace embedded iframes with placeholders — they can't work in HONE's sandbox
-    // (no scripts allowed, and relative URLs resolve against HONE's origin)
-    let iframeId = 0;
-    safeHtml = safeHtml.replace(
-      /<iframe\b([^>]*)src\s*=\s*("[^"]*"|'[^']*')([^>]*)>[\s\S]*?<\/iframe>/gi,
-      (_match, before, srcAttr, after) => {
-        const id = `hone-iframe-${iframeId++}`;
-        const src = srcAttr.replace(/^["']|["']$/g, '');
-        // Extract title attribute if present
-        const attrs = before + after;
-        const titleMatch = attrs.match(/title\s*=\s*"([^"]*)"/i);
-        const title = titleMatch ? titleMatch[1] : src;
-        tabState.iframeSrcMap.set(id, { src, original: _match });
-        return `<div data-hone-iframe-id="${id}" data-hone-iframe-src="${src}" class="hone-iframe-placeholder">
-          <div class="hone-iframe-label">Embedded content</div>
-          <div class="hone-iframe-title">${title}</div>
-          <button class="hone-iframe-open-btn" type="button">Open in Browser</button>
-        </div>`;
-      }
-    );
-
-    // Inject CSP to block ALL JavaScript (including inline handlers like onload, onerror)
-    const csp = `<meta http-equiv="Content-Security-Policy" content="script-src 'none';" data-hone-csp>`;
-    if (safeHtml.includes('<head>')) {
-      safeHtml = safeHtml.replace('<head>', `<head>${csp}`);
-    } else if (safeHtml.includes('<head ')) {
-      safeHtml = safeHtml.replace(/<head\s[^>]*>/, `$&${csp}`);
-    } else if (safeHtml.includes('<html>')) {
-      safeHtml = safeHtml.replace('<html>', `<html><head>${csp}</head>`);
-    } else if (safeHtml.includes('<html ')) {
-      safeHtml = safeHtml.replace(/<html\s[^>]*>/, `$&<head>${csp}</head>`);
-    }
-
-    // Use srcdoc instead of doc.write() - this properly respects sandbox
-    iframe.srcdoc = safeHtml;
-    container.appendChild(iframe);
-    tabState.contentFrame = iframe;
-
-    // Wait for srcdoc content to load
-    await new Promise<void>((resolve) => {
-      iframe.onload = () => resolve();
-    });
-
-    const doc = iframe.contentDocument!;
-
-    // Inject base tag for relative paths (only for HTML files - markdown already has it inline)
-    if (fileType === 'html') {
-      const base = doc.createElement("base");
-      base.href = `file://${dirPath}/`;
-      base.setAttribute(EDITOR_ATTR, "base");
-      doc.head.insertBefore(base, doc.head.firstChild);
-    }
-
-    // Transform images to use Tauri asset protocol for display
-    // This handles both HTML files and raw HTML <img> tags in markdown
-    transformImagesForDisplay(doc, dirPath);
-
-    // Wire up iframe placeholder "Open in Browser" buttons
-    const placeholders = doc.querySelectorAll('[data-hone-iframe-id]');
-    placeholders.forEach((el) => {
-      const btn = el.querySelector('.hone-iframe-open-btn');
-      const src = el.getAttribute('data-hone-iframe-src');
-      if (btn && src) {
-        btn.addEventListener('click', () => {
-          const absolutePath = src.startsWith('/') ? src : `${dirPath}/${src}`;
-          invoke('open_in_browser', { path: absolutePath });
-        });
-      }
-    });
-
-    // Inject editing capabilities
-    injectStyles(doc);
-
-    if (fileType === 'html' && tabState.regions.length > 0) {
-      // Use region-based editing for HTML files
-      injectEditableRegions(doc, tabState.regions);
+    if (fileType === "markdown") {
+      await mountMarkdownTab(tabState, container, content, dirPath);
     } else {
-      // For markdown, use selector-based approach (legacy)
-      injectEditableForMarkdown(doc);
+      await mountHtmlTab(tabState, container, content, dirPath);
     }
 
-    // Track changes
-    doc.addEventListener("input", markDirty);
-
-    // Keyboard shortcuts in iframe (capture phase on both document and window)
-    doc.addEventListener("keydown", handleKeyboardShortcut, true);
-    if (iframe.contentWindow) {
-      iframe.contentWindow.addEventListener("keydown", handleKeyboardShortcut, true);
-    }
-
-    // Attach context menu for element operations
-    contextMenu.attach(doc);
-
-    // Attach paste handler for rich content
-    attachPasteHandler(doc);
-
-    // Initialize undo system
-    const undoManager = new UndoManager(50);
-    undoManager.setDocument(doc);
-    tabState.undoManager = undoManager;
-
-    // Initialize text edit tracking
-    const textEditTracker = new TextEditTracker(undoManager, doc, markDirty, 500);
-    textEditTracker.attach();
-    textEditTracker.recordAllRegionStates();
-    tabState.textEditTracker = textEditTracker;
-
-    // Initialize drag-drop reordering
-    const dragDropManager = new DragDropManager(iframe, undoManager, textEditTracker, markDirty);
-    dragDropManager.attach();
-
-    // Attach image overlay buttons
-    imageOverlayManager.attach(iframe);
-
-    // Create tab and switch to it
     const tabId = tabBar.createTab(tabState);
-    if (tabId) {
-      tabBar.setActiveTab(tabId);
+    if (!tabId) return;
 
-      // Update toolbar
-      toolbar.setFilename(filename);
-      toolbar.setUnsaved(false);
-      toolbar.setFileType(fileType);
+    tabBar.setActiveTab(tabId);
+    toolbar.setFilename(filename);
+    toolbar.setUnsaved(false);
+    toolbar.setFileType(fileType);
 
-      // Add to recent files
-      await addToRecentFiles(path);
+    await addToRecentFiles(path);
 
-      // Hide welcome screen and show sidebar
-      const welcome = document.getElementById("welcome");
-      if (welcome) {
-        welcome.style.display = "none";
-      }
-      const sidebar = document.getElementById("tab-bar-container");
-      if (sidebar) {
-        sidebar.style.display = "flex";
-      }
+    const welcome = document.getElementById("welcome");
+    if (welcome) welcome.style.display = "none";
+    const sidebar = document.getElementById("tab-bar-container");
+    if (sidebar) sidebar.style.display = "flex";
 
-      // Initialize find/replace bar for this document
-      initializeFindReplaceBar();
-
-      // Save session state
-      await saveSession();
-    }
-
+    initializeFindReplaceBar();
+    await saveSession();
   } catch (err) {
     console.error("Failed to load file:", err);
     alert(`Failed to load file: ${err}`);
   }
 }
 
-/**
- * Legacy selector-based editable injection for markdown files
- */
-function injectEditableForMarkdown(doc: Document): void {
-  const EDITABLE_SELECTORS = [
-    "p", "h1", "h2", "h3", "h4", "h5", "h6",
-    "li", "td", "th", "blockquote", "figcaption",
-    "dt", "dd", "label", "legend", "summary",
-  ].join(", ");
-
-  const EDITOR_CLASS = "html-editor-editable";
-
-  const elements = doc.querySelectorAll(EDITABLE_SELECTORS);
-
-  elements.forEach((el) => {
-    // Skip if element has no direct text content or only whitespace
-    const hasDirectText = Array.from(el.childNodes).some(
-      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
-    );
-
-    // Also include elements that have only inline children (like <strong>, <em>)
-    const hasInlineContent = el.children.length > 0 &&
-      Array.from(el.children).every((child) => {
-        const display = window.getComputedStyle(child).display;
-        return display === "inline" || display === "inline-block";
-      });
-
-    if (hasDirectText || hasInlineContent || el.children.length === 0) {
-      el.setAttribute("contenteditable", "true");
-      el.classList.add(EDITOR_CLASS);
-      el.setAttribute(EDITOR_ATTR, "true");
-    }
+function hideAllSurfaces(container: HTMLElement): void {
+  container.querySelectorAll("iframe").forEach((el) => {
+    (el as HTMLElement).style.display = "none";
+  });
+  container.querySelectorAll(".milkdown-tab-root").forEach((el) => {
+    (el as HTMLElement).style.display = "none";
   });
 }
 
-// Switch to a different tab
+async function mountMarkdownTab(
+  tabState: Omit<TabState, "id">,
+  container: HTMLElement,
+  content: string,
+  dirPath: string
+): Promise<void> {
+  tabState.originalMarkdown = content;
+
+  const parsed = extractFrontmatter(content);
+  tabState.frontmatter = parsed.frontmatter;
+
+  const { processed, reverseMap } = preprocessImages(parsed.content, (rel) => {
+    return convertFileSrc(`${dirPath}/${rel}`);
+  });
+  tabState.imageReverseMap = reverseMap;
+
+  const root = document.createElement("div");
+  root.className = "milkdown-tab-root";
+  container.appendChild(root);
+  tabState.milkdownContainer = root;
+
+  const editor = await MilkdownEditor.create({
+    root,
+    markdown: processed,
+    onChange: () => markDirty(),
+  });
+  tabState.milkdownEditor = editor;
+
+  // Focus the editor for immediate typing
+  requestAnimationFrame(() => editor.focus());
+}
+
+async function mountHtmlTab(
+  tabState: Omit<TabState, "id">,
+  container: HTMLElement,
+  content: string,
+  dirPath: string
+): Promise<void> {
+  tabState.originalHtml = content;
+  tabState.originalDoctype = extractDoctype(content);
+  tabState.regions = parseEditableRegions(content);
+
+  const iframe = document.createElement("iframe");
+  iframe.className = "content-frame";
+  iframe.setAttribute("sandbox", "allow-same-origin");
+  iframe.setAttribute("autocomplete", "off");
+
+  let scriptId = 0;
+  let safeHtml = content.replace(
+    /<script\b[^>]*>[\s\S]*?<\/script>/gi,
+    (match) => {
+      const id = `hone-script-${scriptId++}`;
+      tabState.scriptMap.set(id, match);
+      return `<!--${id}-->`;
+    }
+  );
+
+  let iframeId = 0;
+  safeHtml = safeHtml.replace(
+    /<iframe\b([^>]*)src\s*=\s*("[^"]*"|'[^']*')([^>]*)>[\s\S]*?<\/iframe>/gi,
+    (_match, before, srcAttr, after) => {
+      const id = `hone-iframe-${iframeId++}`;
+      const src = srcAttr.replace(/^["']|["']$/g, "");
+      const attrs = before + after;
+      const titleMatch = attrs.match(/title\s*=\s*"([^"]*)"/i);
+      const title = titleMatch ? titleMatch[1] : src;
+      tabState.iframeSrcMap.set(id, { src, original: _match });
+      return `<div data-hone-iframe-id="${id}" data-hone-iframe-src="${src}" class="hone-iframe-placeholder">
+          <div class="hone-iframe-label">Embedded content</div>
+          <div class="hone-iframe-title">${title}</div>
+          <button class="hone-iframe-open-btn" type="button">Open in Browser</button>
+        </div>`;
+    }
+  );
+
+  const csp = `<meta http-equiv="Content-Security-Policy" content="script-src 'none';" data-hone-csp>`;
+  if (safeHtml.includes("<head>")) {
+    safeHtml = safeHtml.replace("<head>", `<head>${csp}`);
+  } else if (safeHtml.includes("<head ")) {
+    safeHtml = safeHtml.replace(/<head\s[^>]*>/, `$&${csp}`);
+  } else if (safeHtml.includes("<html>")) {
+    safeHtml = safeHtml.replace("<html>", `<html><head>${csp}</head>`);
+  } else if (safeHtml.includes("<html ")) {
+    safeHtml = safeHtml.replace(/<html\s[^>]*>/, `$&<head>${csp}</head>`);
+  }
+
+  iframe.srcdoc = safeHtml;
+  container.appendChild(iframe);
+  tabState.contentFrame = iframe;
+
+  await new Promise<void>((resolve) => {
+    iframe.onload = () => resolve();
+  });
+
+  const doc = iframe.contentDocument!;
+
+  const base = doc.createElement("base");
+  base.href = `file://${dirPath}/`;
+  base.setAttribute(EDITOR_ATTR, "base");
+  doc.head.insertBefore(base, doc.head.firstChild);
+
+  transformImagesForDisplay(doc, dirPath);
+
+  const placeholders = doc.querySelectorAll("[data-hone-iframe-id]");
+  placeholders.forEach((el) => {
+    const btn = el.querySelector(".hone-iframe-open-btn");
+    const src = el.getAttribute("data-hone-iframe-src");
+    if (btn && src) {
+      btn.addEventListener("click", () => {
+        const absolutePath = src.startsWith("/") ? src : `${dirPath}/${src}`;
+        invoke("open_in_browser", { path: absolutePath });
+      });
+    }
+  });
+
+  injectStyles(doc);
+
+  if (tabState.regions.length > 0) {
+    injectEditableRegions(doc, tabState.regions);
+  }
+
+  doc.addEventListener("input", markDirty);
+  doc.addEventListener("keydown", handleKeyboardShortcut, true);
+  if (iframe.contentWindow) {
+    iframe.contentWindow.addEventListener(
+      "keydown",
+      handleKeyboardShortcut,
+      true
+    );
+  }
+
+  contextMenu.attach(doc);
+  attachPasteHandler(doc);
+
+  const undoManager = new UndoManager(50);
+  undoManager.setDocument(doc);
+  tabState.undoManager = undoManager;
+
+  const textEditTracker = new TextEditTracker(undoManager, doc, markDirty, 500);
+  textEditTracker.attach();
+  textEditTracker.recordAllRegionStates();
+  tabState.textEditTracker = textEditTracker;
+
+  const dragDropManager = new DragDropManager(
+    iframe,
+    undoManager,
+    textEditTracker,
+    markDirty
+  );
+  dragDropManager.attach();
+
+  imageOverlayManager.attach(iframe);
+}
+
+async function teardownTab(tab: TabState): Promise<void> {
+  if (tab.milkdownEditor) {
+    await tab.milkdownEditor.destroy();
+    tab.milkdownEditor = null;
+  }
+  if (tab.milkdownContainer) {
+    tab.milkdownContainer.remove();
+    tab.milkdownContainer = null;
+  }
+  if (tab.contentFrame) {
+    tab.contentFrame.remove();
+    tab.contentFrame = null;
+  }
+}
+
 function switchToTab(tabId: string): void {
   const tab = tabBar.getTab(tabId);
   if (!tab) return;
 
-  // Hide all iframes
   const container = document.getElementById("editor-container")!;
-  const iframes = container.querySelectorAll("iframe");
-  iframes.forEach(iframe => {
-    iframe.style.display = "none";
-  });
+  hideAllSurfaces(container);
 
-  // Show the selected tab's iframe
-  if (tab.contentFrame) {
-    tab.contentFrame.style.display = "block";
-  }
+  if (tab.contentFrame) tab.contentFrame.style.display = "block";
+  if (tab.milkdownContainer) tab.milkdownContainer.style.display = "block";
 
-  // Update tab bar
   tabBar.setActiveTab(tabId);
-
-  // Update toolbar
   toolbar.setFilename(tab.filename);
   toolbar.setUnsaved(tab.isDirty);
   toolbar.setFileType(tab.fileType);
 
-  // Update find/replace bar to use this tab's iframe
   if (findReplaceBar && tab.contentFrame) {
     findReplaceBar.setIframe(tab.contentFrame);
   }
 
-  // Update image overlay to show buttons for this tab's images
   if (tab.contentFrame) {
     imageOverlayManager.attach(tab.contentFrame);
+  } else {
+    imageOverlayManager.detach();
   }
 
-  // Save session state (fire and forget)
+  if (tab.milkdownEditor) {
+    requestAnimationFrame(() => tab.milkdownEditor?.focus());
+  }
+
   saveSession();
 }
 
-// Close a tab
 async function closeTab(tabId: string): Promise<void> {
   const tab = tabBar.getTab(tabId);
   if (!tab) return;
 
-  // Warn about unsaved changes
   if (tab.isDirty) {
-    const shouldClose = confirm(`"${tab.filename}" has unsaved changes. Close anyway?`);
+    const shouldClose = confirm(
+      `"${tab.filename}" has unsaved changes. Close anyway?`
+    );
     if (!shouldClose) return;
   }
 
-  // Remove iframe
-  if (tab.contentFrame) {
-    tab.contentFrame.remove();
-  }
-
-  // Remove tab
+  await teardownTab(tab);
   tabBar.removeTab(tabId);
 
-  // If this was the active tab, switch to another or show welcome
   if (tabBar.getActiveTabId() === null) {
     const allTabs = tabBar.getAllTabs();
     if (allTabs.length > 0) {
       switchToTab(allTabs[allTabs.length - 1].id);
     } else {
-      // Show welcome screen and hide sidebar
       const welcome = document.getElementById("welcome");
-      if (welcome) {
-        welcome.style.display = "flex";
-      }
+      if (welcome) welcome.style.display = "flex";
       const sidebar = document.getElementById("tab-bar-container");
-      if (sidebar) {
-        sidebar.style.display = "none";
-      }
+      if (sidebar) sidebar.style.display = "none";
       toolbar.setFilename("");
       toolbar.setUnsaved(false);
-
-      // Detach image overlay when no tabs are open
       imageOverlayManager.detach();
-
-      // Refresh recent files list
       initializeRecentFiles();
     }
   }
 
-  // Save session state after tab is closed
   await saveSession();
 }
 
 async function saveToPath(path: string): Promise<void> {
   const tab = getActiveTab();
-  if (!tab?.contentFrame?.contentDocument) return;
+  if (!tab) return;
 
   try {
     const targetType = detectFileType(path);
     let content: string;
 
-    if (targetType === 'markdown') {
-      // Serialize HTML back to markdown
-      const markdownContent = serializeToMarkdown(tab.contentFrame.contentDocument);
-      // Prepend frontmatter if we had it originally
-      content = stringifyWithFrontmatter(markdownContent, tab.frontmatter);
-    } else if (tab.fileType === 'html' && tab.originalHtml && tab.regions.length > 0) {
-      // HTML file with surgical editing - sync from DOM and replace only changed regions
-      syncRegionsFromDom(tab.contentFrame.contentDocument as unknown as Document, tab.regions);
-      content = surgicalReplace(tab.originalHtml, tab.regions);
+    if (tab.fileType === "markdown" && tab.milkdownEditor) {
+      // Markdown source of truth lives in Milkdown
+      let md = tab.milkdownEditor.getMarkdown();
+      md = postprocessImages(md, tab.imageReverseMap);
 
-      // Restore scripts that were stripped for safe editing
+      if (targetType === "markdown") {
+        content = stringifyWithFrontmatter(md, tab.frontmatter);
+      } else {
+        // Markdown → HTML export: keep simple, write the markdown body as-is
+        // wrapped in a minimal HTML shell. Heavy conversion was a feature of
+        // the legacy turndown round-trip we just removed.
+        content = stringifyWithFrontmatter(md, tab.frontmatter);
+      }
+    } else if (
+      tab.fileType === "html" &&
+      tab.contentFrame?.contentDocument &&
+      tab.originalHtml &&
+      tab.regions.length > 0 &&
+      targetType === "html"
+    ) {
+      syncRegionsFromDom(
+        tab.contentFrame.contentDocument as unknown as Document,
+        tab.regions
+      );
+      content = surgicalReplace(tab.originalHtml, tab.regions);
       tab.scriptMap.forEach((script, id) => {
         content = content.replace(`<!--${id}-->`, script);
       });
-    } else {
-      // Fallback: full serialization for markdown-to-HTML export or edge cases
-      content = tab.originalDoctype + "\n" + tab.contentFrame.contentDocument.documentElement.outerHTML;
-
-      // Restore original iframe tags from placeholders
+    } else if (tab.fileType === "html" && tab.contentFrame?.contentDocument) {
+      content =
+        tab.originalDoctype +
+        "\n" +
+        tab.contentFrame.contentDocument.documentElement.outerHTML;
       tab.iframeSrcMap.forEach(({ original }, id) => {
         const placeholderRegex = new RegExp(
           `<div[^>]*data-hone-iframe-id="${id}"[^>]*>[\\s\\S]*?<\\/div>`,
-          'g'
+          "g"
         );
         content = content.replace(placeholderRegex, original);
       });
+    } else {
+      return;
     }
 
     await invoke("write_file", { path, content });
 
     const filename = path.split(/[/\\]/).pop() || path;
 
-    // Update tab state
     tabBar.updateTab(tab.id, {
       currentPath: path,
       filename,
@@ -809,39 +731,30 @@ async function saveToPath(path: string): Promise<void> {
       isDirty: false,
     });
 
-    // If we saved as markdown, update the original markdown
-    if (targetType === 'markdown') {
-      tabBar.updateTab(tab.id, {
-        originalMarkdown: content,
-        originalHtml: null,
-        regions: [],
-      });
-    } else if (tab.fileType === 'html') {
-      // Update originalHtml and re-parse regions for subsequent edits
+    if (tab.fileType === "markdown") {
+      tabBar.updateTab(tab.id, { originalMarkdown: content });
+    } else if (tab.fileType === "html") {
       tabBar.updateTab(tab.id, {
         originalHtml: content,
         regions: parseEditableRegions(content),
-        originalMarkdown: null,
-        frontmatter: null,
       });
     }
 
     toolbar.setFilename(filename);
     toolbar.setUnsaved(false);
     toolbar.setFileType(targetType);
-
     showToast("Saved!");
-
   } catch (err) {
     console.error("Failed to save file:", err);
     alert(`Failed to save file: ${err}`);
   }
 }
 
-// Shared image operation handlers (used by both ContextMenu and ImageOverlayManager)
+// Shared image operation handlers — only valid for HTML tabs
 async function handleReplaceImage(image: HTMLImageElement): Promise<void> {
   const tab = getActiveTab();
-  if (!tab?.currentPath || !tab.undoManager || !tab.contentFrame?.contentDocument) return;
+  if (!tab?.currentPath || !tab.undoManager || !tab.contentFrame?.contentDocument)
+    return;
 
   tab.textEditTracker?.flush();
 
@@ -851,58 +764,42 @@ async function handleReplaceImage(image: HTMLImageElement): Promise<void> {
 
   const newSrc = resolveImageSrc(imagePath, dirPath);
   const selectionBefore = captureDocumentSelection(tab.contentFrame.contentDocument);
-
   const command = new ImageReplaceCommand(image, newSrc, selectionBefore);
   tab.undoManager.execute(command);
   markDirty();
-
   tab.textEditTracker?.recordAllRegionStates();
 }
 
 function handleRemoveImage(image: HTMLImageElement): void {
   const tab = getActiveTab();
   if (!tab?.undoManager || !tab.contentFrame?.contentDocument) {
-    // Fallback to old behavior if undo system not initialized
-    const figure = image.closest('figure');
-    if (figure) {
-      figure.remove();
-    } else {
-      image.remove();
-    }
+    const figure = image.closest("figure");
+    if (figure) figure.remove();
+    else image.remove();
     markDirty();
     return;
   }
 
   tab.textEditTracker?.flush();
-
   const selectionBefore = captureDocumentSelection(tab.contentFrame.contentDocument);
   const command = new ImageDeleteCommand(image, selectionBefore);
   tab.undoManager.execute(command);
   markDirty();
-
   tab.textEditTracker?.recordAllRegionStates();
 
-  // Update image overlay to remove the deleted image's overlay
-  if (tab.contentFrame) {
-    imageOverlayManager.attach(tab.contentFrame);
-  }
+  if (tab.contentFrame) imageOverlayManager.attach(tab.contentFrame);
 }
 
-// Initialize TabBar with callbacks
 tabBar = new TabBar(tabBarContainer, {
   onTabSwitch: (tabId) => switchToTab(tabId),
   onTabClose: (tabId) => closeTab(tabId),
 });
 
-// Initialize ContextMenu with element operation callbacks
 contextMenu = new ContextMenu({
-  onDelete: (element) => {
-    deleteElement(element, markDirty);
-  },
+  onDelete: (element) => deleteElement(element, markDirty),
   onEditLink: (link) => {
     const tab = getActiveTab();
     if (!tab?.contentFrame?.contentDocument) return;
-
     showPromptDialog(
       tab.contentFrame.contentDocument,
       "Edit Link",
@@ -910,15 +807,12 @@ contextMenu = new ContextMenu({
         { label: "URL", value: link.href, placeholder: "https://example.com" },
         { label: "Text", value: link.textContent || "", placeholder: "Link text" },
       ],
-      ([url, text]) => {
-        editLink(link, url, text, markDirty);
-      }
+      ([url, text]) => editLink(link, url, text, markDirty)
     );
   },
   onInsertLink: (_element) => {
     const tab = getActiveTab();
     if (!tab?.contentFrame?.contentDocument) return;
-
     showPromptDialog(
       tab.contentFrame.contentDocument,
       "Add Link",
@@ -930,49 +824,40 @@ contextMenu = new ContextMenu({
       }
     );
   },
-  onRemoveLink: (link) => {
-    removeLink(link, markDirty);
-  },
+  onRemoveLink: (link) => removeLink(link, markDirty),
   onReplaceImage: handleReplaceImage,
   onRemoveImage: handleRemoveImage,
   onInsertImage: async (afterElement) => {
     const tab = getActiveTab();
-    if (!tab?.currentPath || !tab.undoManager || !tab.contentFrame?.contentDocument) return;
-
-    // Flush any pending text edits
+    if (!tab?.currentPath || !tab.undoManager || !tab.contentFrame?.contentDocument)
+      return;
     tab.textEditTracker?.flush();
-
     const dirPath: string = await invoke("get_file_dir", { path: tab.currentPath });
     const imagePath = await selectImageFile();
     if (!imagePath) return;
-
     const src = resolveImageSrc(imagePath, dirPath);
     const parent = afterElement.parentElement;
     if (!parent) return;
-
-    const insertIndex = Array.from(parent.childNodes).indexOf(afterElement as ChildNode) + 1;
-    const selectionBefore = captureDocumentSelection(tab.contentFrame.contentDocument);
-
+    const insertIndex =
+      Array.from(parent.childNodes).indexOf(afterElement as ChildNode) + 1;
+    const selectionBefore = captureDocumentSelection(
+      tab.contentFrame.contentDocument
+    );
     const command = new ImageInsertCommand(parent, insertIndex, src, selectionBefore);
     tab.undoManager.execute(command);
     markDirty();
-
-    // Re-record region states since DOM structure changed
     tab.textEditTracker?.recordAllRegionStates();
   },
-  onConvertBlock: (element, targetTag) => {
-    convertBlock(element, targetTag, markDirty);
-  },
+  onConvertBlock: (element, targetTag) =>
+    convertBlock(element, targetTag, markDirty),
 });
 
-// Initialize ImageOverlayManager for hover buttons on images
 const editorContainer = document.getElementById("editor-container")!;
 imageOverlayManager = new ImageOverlayManager(editorContainer, {
   onReplace: handleReplaceImage,
   onRemove: handleRemoveImage,
 });
 
-// Handle drag-and-drop file opening
 document.addEventListener("dragover", (e) => {
   e.preventDefault();
   e.stopPropagation();
@@ -985,24 +870,24 @@ document.addEventListener("drop", async (e) => {
   const files = e.dataTransfer?.files;
   if (!files || files.length === 0) return;
 
-  // Check for supported file types
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const name = file.name.toLowerCase();
-
-    if (name.endsWith(".html") || name.endsWith(".htm") ||
-        name.endsWith(".md") || name.endsWith(".markdown")) {
-      // Get file path - this works in Tauri
+    if (
+      name.endsWith(".html") ||
+      name.endsWith(".htm") ||
+      name.endsWith(".md") ||
+      name.endsWith(".markdown")
+    ) {
       const path = (file as unknown as { path?: string }).path;
       if (path) {
         await loadFile(path);
-        break; // Only open first valid file
+        break;
       }
     }
   }
 });
 
-// Handle clipboard paste events for rich content
 function handlePaste(e: ClipboardEvent): void {
   const tab = getActiveTab();
   if (!tab?.contentFrame?.contentDocument) return;
@@ -1014,76 +899,52 @@ function handlePaste(e: ClipboardEvent): void {
   const selection = iframeDoc.getSelection();
   if (!selection || selection.rangeCount === 0) return;
 
-  // Check for HTML content first
   const htmlContent = clipboardData.getData("text/html");
   if (htmlContent) {
     e.preventDefault();
-
-    // Clean up the HTML (remove scripts, styles, etc.)
     const cleanHtml = sanitizeHtmlPaste(htmlContent);
 
-    // Insert at cursor position
     const range = selection.getRangeAt(0);
     range.deleteContents();
 
     const temp = iframeDoc.createElement("div");
     temp.innerHTML = cleanHtml;
 
-    // Move all children into a document fragment
     const frag = iframeDoc.createDocumentFragment();
-    while (temp.firstChild) {
-      frag.appendChild(temp.firstChild);
-    }
+    while (temp.firstChild) frag.appendChild(temp.firstChild);
     range.insertNode(frag);
 
-    // Collapse selection to end
     selection.collapseToEnd();
     markDirty();
-    return;
   }
-
-  // For plain text, let the browser handle it (default behavior)
 }
 
-// Sanitize pasted HTML to remove potentially dangerous or unwanted elements
 function sanitizeHtmlPaste(html: string): string {
-  // Create a temporary container to parse the HTML
   const temp = document.createElement("div");
   temp.innerHTML = html;
 
-  // Remove script tags
-  const scripts = temp.querySelectorAll("script");
-  scripts.forEach((s) => s.remove());
+  temp.querySelectorAll("script").forEach((s) => s.remove());
+  temp.querySelectorAll("style").forEach((s) => s.remove());
 
-  // Remove style tags
-  const styles = temp.querySelectorAll("style");
-  styles.forEach((s) => s.remove());
-
-  // Remove event handlers and dangerous attributes
-  const allElements = temp.querySelectorAll("*");
-  allElements.forEach((el) => {
-    // Remove all event handlers
-    const attrs = Array.from(el.attributes);
-    attrs.forEach((attr) => {
+  temp.querySelectorAll("*").forEach((el) => {
+    Array.from(el.attributes).forEach((attr) => {
       if (attr.name.startsWith("on") || attr.name === "style") {
         el.removeAttribute(attr.name);
       }
     });
   });
 
-  // Remove iframes, objects, embeds
-  const dangerous = temp.querySelectorAll("iframe, object, embed, form, input, button");
-  dangerous.forEach((el) => el.remove());
+  temp
+    .querySelectorAll("iframe, object, embed, form, input, button")
+    .forEach((el) => el.remove());
 
   return temp.innerHTML;
 }
 
-// Listen for paste events in iframes
 function attachPasteHandler(doc: Document): void {
   doc.addEventListener("paste", handlePaste as EventListener, true);
 }
 
-// Recent files functions
 async function addToRecentFiles(path: string): Promise<void> {
   try {
     await invoke("add_recent_file", { path });
@@ -1105,16 +966,10 @@ function renderRecentFiles(files: RecentFile[]): void {
   const welcome = document.getElementById("welcome");
   if (!welcome) return;
 
-  // Remove existing recent files section if any
   const existing = welcome.querySelector(".recent-files");
-  if (existing) {
-    existing.remove();
-  }
-
-  // Don't show section if no recent files
+  if (existing) existing.remove();
   if (files.length === 0) return;
 
-  // Create recent files section
   const section = document.createElement("div");
   section.className = "recent-files";
 
@@ -1138,14 +993,12 @@ function renderRecentFiles(files: RecentFile[]): void {
 
     const pathSpan = document.createElement("span");
     pathSpan.className = "recent-file-path";
-    // Show parent directory for context
     const pathParts = file.path.split(/[/\\]/);
-    pathParts.pop(); // Remove filename
+    pathParts.pop();
     pathSpan.textContent = pathParts.slice(-2).join("/");
 
     link.appendChild(nameSpan);
     link.appendChild(pathSpan);
-
     link.addEventListener("click", async (e) => {
       e.preventDefault();
       await loadFile(file.path);
@@ -1157,32 +1010,24 @@ function renderRecentFiles(files: RecentFile[]): void {
 
   section.appendChild(list);
 
-  // Insert after shortcuts
   const shortcuts = welcome.querySelector(".shortcuts");
-  if (shortcuts) {
-    shortcuts.after(section);
-  } else {
-    welcome.appendChild(section);
-  }
+  if (shortcuts) shortcuts.after(section);
+  else welcome.appendChild(section);
 }
 
-// Initialize recent files on startup
 async function initializeRecentFiles(): Promise<void> {
   const files = await loadRecentFiles();
   renderRecentFiles(files);
 }
 
-// Session management functions
 async function saveSession(): Promise<void> {
   try {
     const allTabs = tabBar.getAllTabs();
     const openFiles = allTabs
-      .filter(tab => tab.currentPath)
-      .map(tab => tab.currentPath);
-
+      .filter((tab) => tab.currentPath)
+      .map((tab) => tab.currentPath);
     const activeTab = getActiveTab();
     const activeFile = activeTab?.currentPath || null;
-
     await invoke("save_session", { openFiles, activeFile });
   } catch (err) {
     console.error("Failed to save session:", err);
@@ -1201,12 +1046,10 @@ async function loadSession(): Promise<SessionData | null> {
 async function restoreSession(): Promise<void> {
   const session = await loadSession();
   if (!session || session.open_files.length === 0) {
-    // No session to restore, just show recent files
     await initializeRecentFiles();
     return;
   }
 
-  // Load all files from the session
   for (const filePath of session.open_files) {
     try {
       await loadFile(filePath);
@@ -1215,16 +1058,13 @@ async function restoreSession(): Promise<void> {
     }
   }
 
-  // Switch to the previously active file if it was restored
   if (session.active_file) {
     const activeTabId = tabBar.findTabByPath(session.active_file);
-    if (activeTabId) {
-      switchToTab(activeTabId);
-    }
+    if (activeTabId) switchToTab(activeTabId);
   }
 }
 
-// Listen for CLI file open events (second-instance launches)
+// Listen for CLI file open events (second-instance launches or macOS file associations)
 listen<string[]>("open-files", async (event) => {
   for (const filePath of event.payload) {
     await loadFile(filePath);
