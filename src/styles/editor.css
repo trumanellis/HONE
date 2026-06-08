@@ -781,6 +781,7 @@ body::before {
 
 /* ---------- Images ---------- */
 .milkdown-tab-root .ProseMirror img {
+  width: 100%;
   max-width: 100%;
   height: auto;
   border-radius: var(--radius-md);
